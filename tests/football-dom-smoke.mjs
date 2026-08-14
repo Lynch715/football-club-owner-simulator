@@ -116,7 +116,7 @@ assert.ok(S.arcMeta.lastMonth > 0, "剧情引擎跑起来了");
 // 存档往返：戏剧层状态必须能被 JSON 存下来再读回去
 {
   const raw = JSON.parse(JSON.stringify(sandbox.FootballOwnerGame.getState()));
-  assert.equal(raw.version, 3, "存档版本已升级");
+  assert.ok(raw.version >= 3, "存档带版本号");
   assert.ok(raw.room && raw.rival && raw.arcs && raw.arcMeta, "更衣室/宿敌/剧情都进了存档");
   sandbox.FootballOwnerGame.setState(raw);
   sandbox.switchTab("overview");

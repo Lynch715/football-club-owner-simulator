@@ -36,7 +36,7 @@ const drain=(pickIdx)=>{let g=0;
   }};
 
 sb.chooseArchetype("fallen");
-$("#ownerInput").value="欧阳明诚";$("#cityInput").value="山城";$("#clubInput").value="山城竞技联合";
+$("#ownerInput").value="欧阳明诚";  // 档位默认即真实队名，城市/队名留空走默认
 sb.startGame();drain();
 
 // 玩到第 10 个月：拿到赛前会议、剧情、终局直播

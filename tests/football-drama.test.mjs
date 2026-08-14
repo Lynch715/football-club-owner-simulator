@@ -152,4 +152,36 @@ const g = loadGame();
   assert.equal(fd2.race, "survival", "垫底时应进入保级日剧本");
 }
 
+
+/* ---------- 真实中超队名 + 宿敌降级 ---------- */
+{
+  // 三档开局各绑一段真实德比
+  const pairs = { fallen: ["上海申花", "上海海港"], promoted: ["辽宁铁人", "大连英博"], capital: ["青岛西海岸", "青岛海牛"] };
+  for (const [arch, [mine, foeName]] of Object.entries(pairs)) {
+    const s = g.initialState({ ownerName: "测试", city: "城", clubName: mine, archetype: arch }, seeded(3));
+    assert.equal(g.rivalClub(s).name, foeName, `${arch} 的宿敌应是 ${foeName}`);
+    assert.equal(g.matchImportance(s, g.rivalClub(s), "联赛"), "同城德比");
+    assert.equal(s.npcs.find(n => n.id === "rival").role, `${foeName}老板`, "宿敌老板头衔跟着球队走");
+  }
+  const s = newGame(g, "fallen", seeded(4));
+  const fake = /海星|岭南先锋|东海联|金陵城|九牛|齐鲁泰岳|长安联合|江城码头|辽河竞技|南州凤凰|河洛|滨海蓝鲸|云岭飞鹰|楚州雄狮|松江竞技|天府星火|燕山联/;
+  assert.ok(!fake.test(s.clubs.map(c => c.name).join()), "联赛里不应再有虚构队名");
+  assert.equal(s.clubs.length, 12, "联赛仍是 12 队");
+
+  // 宿敌降级：战绩留下来，故事线不能卡住，面板也不能空掉
+  const rel = newGame(g, "capital", seeded(5));
+  const foe = g.rivalClub(rel);
+  rel.rival.w = 3; rel.rival.l = 1;
+  rel.world.lastRelegated = [{ id: foe.id, name: foe.name }];
+  rel.clubs = g.prepareNextSeasonClubs(rel, seeded(6));
+  assert.equal(rel.rival.gone, true, "宿敌降级应被记下来");
+  assert.equal(rel.rival.goneName, foe.name, "记住降级前的名字");
+  assert.equal(g.rivalClub(rel), null, "降级后不再是联赛对手");
+  assert.equal(g.rivalName(rel), foe.name, "名字仍然可读，故事线不会变成 undefined");
+  assert.ok(rel.clubHistory.milestones.some(m => m.title.includes(foe.name)), "降级写进队史");
+  rel.globalMonth = 6;
+  const beat = g.arcBeatCheck(rel, true);
+  assert.ok(beat && !/undefined/.test(beat.body), "宿敌降级后剧情仍能推进且没有 undefined");
+}
+
 console.log("football drama test passed");
