@@ -87,6 +87,20 @@ const STYLES={attack:"进攻压迫",control:"控球组织",defense:"低位防守
 const STYLE_EDGE={"attack:defense":2.5,"defense:control":2.5,"control:attack":2.5,"pragmatic:attack":1.5,"attack:youth":1,"youth:control":1};
 const SURNAMES="赵钱孙李周吴郑王冯陈褚卫蒋沈韩杨朱秦许何吕施张孔曹严华金魏陶姜戚谢邹喻柏水窦章云苏潘葛范彭鲁韦马苗方俞任袁柳史唐费廉岑薛雷贺倪汤滕殷罗毕郝邬安常乐于傅皮卞齐康伍余元顾孟黄穆萧尹姚邵汪祁毛禹狄米贝明臧计伏成戴宋庞熊纪舒屈项祝董梁杜阮蓝闵席季麻强贾路娄危江童颜郭梅盛林钟徐邱骆高夏蔡田樊胡凌霍虞万支柯管卢莫经房裘缪解应宗丁宣邓郁单杭洪包诸左石崔吉龚程邢裴陆荣翁荀羊甄曲封储靳汲邴糜松井段富巫乌焦巴弓牧隗山谷车侯宓蓬全郗班仰秋仲伊宫宁仇栾甘祖武符刘景詹束龙叶幸司韶郜黎蓟薄印宿白怀蒲台从鄂索咸籍赖卓蔺屠蒙池乔阴胥苍闻党谭贡劳姬申扶堵冉宰郦雍璩桑桂濮牛寿通边燕冀浦尚温庄晏柴瞿阎充慕连茹习宦艾容向古易慎戈廖庾终暨居衡步都耿满弘匡国文寇广禄阙东欧利蔚越夔隆师巩厍聂晁勾敖融冷辛阚那简饶空曾毋沙乜养鞠须丰巢关蒯相查后荆红游竺权逯盖益桓公".split("");
 const GIVEN=["浩然","宇轩","子豪","俊杰","博文","天宇","明哲","泽宇","志远","嘉豪","文昊","启航","皓轩","晨阳","瑞霖","一鸣","凯文","思远","承泽","景尧","振华","国栋","海峰","伟强","向东","立新","鹏飞","建军","正阳","维嘉","少杰","启明","卓然","毅恒","嘉树","远航","凌峰","奕辰","靖宇","昭远","铭泽","驰远","云帆","星河","逸飞","冠宇","修远","峻熙","佑安","知行","怀瑾","柏舟","亦航","嘉佑","世豪","庆云","书衡","景行"];
+const FOREIGN_SYL=["卡","马","佩","罗","迪","桑","埃","阿","卢","米","内","塔","费","儒","巴","蒂","科","恩","多","雷","加","西","诺","维","扬","博","古","拉","泽","翁","莱","顿","若","萨","坎","蒙","代","波","хо".replace("хо","霍"),"齐"];
+const FOREIGN_TAIL=["尼奥","尔森","维奇","斯基","蒂尼","多夫","拉诺","西奥","巴斯","科夫","扬科","德罗","利尼","蒙特","瓦尔"];
+const NAME_KEY="football_owner_namelist";
+let customNames=[];
+function parseNameList(text){return String(text||"").split(/[\n,，、;；]/).map(x=>x.trim()).filter(Boolean).filter((x,i,a)=>a.indexOf(x)===i).slice(0,400)}
+function loadNameList(){try{customNames=parseNameList(localStorage.getItem(NAME_KEY)||"")}catch(e){customNames=[]}return customNames}
+function saveNameList(text){customNames=parseNameList(text);try{text?localStorage.setItem(NAME_KEY,customNames.join("\n")):localStorage.removeItem(NAME_KEY)}catch(e){}return customNames}
+function renameSquad(s){
+ // 名单按 一线队 → 青训 → 市场 的顺序发下去，多出来的留给以后生成的球员
+ if(!s||!customNames.length)return 0;
+ const pool=customNames.slice(),targets=[...(s.roster||[]),...(s.youth||[]),...(s.market||[])];
+ let i=0;targets.forEach(p=>{if(i<pool.length){p.name=pool[i++]}});
+ return i}
+function foreignName(rng=Math.random){const a=pick(FOREIGN_SYL,rng),b=pick(FOREIGN_SYL,rng);return rng()<.55?a+b+pick(FOREIGN_TAIL,rng):a+b+pick(FOREIGN_SYL,rng)+pick(FOREIGN_TAIL,rng)}
 const COACH_NAMES=["周启明","高世勋","唐北辰","冯国安","许文川","陆正涛","沈嘉树","赵崇岳","梁克勤","韩少锋","宋怀远","杜明哲"];
 const SPONSOR_NAMES=["远峰汽车","天河饮品","安泰保险","华曜手机","白鹿运动","北辰航空","嘉禾地产","星途科技","东港物流","国盛电器","恒远能源","云帆文旅"];
 const FACILITIES={capacity:{name:"看台容量",desc:"提高上座上限和门票收入",caps:[12000,18000,26000,36000,50000],cost:[0,650,1100,1800,2800]},commercial:{name:"包厢商业",desc:"提高比赛日商业和赞助报价",cost:[0,500,900,1450,2200]},pitch:{name:"草皮质量",desc:"降低受伤概率并改善主场发挥",cost:[0,420,750,1200,1900]},safety:{name:"安保设施",desc:"降低球迷骚乱和球场事故风险",cost:[0,480,820,1350,2100]}};
@@ -522,20 +536,258 @@ function dramaCards(){
  return room+derby+story
 }
 
+/* ================= 转会谈判：多回合议价 + 交易结构 ================= */
+const DEAL_TERMS={
+ installment:{label:"分期付款",note:"当期现金压力减半，卖方要多要一点"},
+ goalBonus:{label:"进球奖金",note:"当期少付，他进球了再补"},
+ sellOn:{label:"下家分成",note:"当期少付，将来卖他要分给原东家"},
+ swap:{label:"球员交换",note:"用自家球员抵一部分转会费"}
+};
+function emptyTerms(){return{installment:0,goalBonus:false,sellOn:0,swapId:null}}
+
+// 卖方眼里这份报价值多少（分期打折、奖金与分成按折现算、交换球员按八折算）
+function offerWorth(s,p,fee,terms){
+ const t=terms||emptyTerms();
+ const inst=[1,.94,.88][t.installment]||1;
+ const bonus=t.goalBonus?fee*.12:0;
+ const sell=t.sellOn?p.value*t.sellOn/100*.35:0;
+ const swap=t.swapId?((s.roster||[]).find(x=>x.id===t.swapId)||{value:0}).value*.8:0;
+ return Math.round(fee*inst+bonus+sell+swap)
+}
+// 你这个月真正要掏的现金
+function cashOutlay(s,p,fee,terms){
+ const t=terms||emptyTerms();
+ const swap=t.swapId?((s.roster||[]).find(x=>x.id===t.swapId)||{value:0}).value*.8:0;
+ let cash=fee-swap;
+ if(t.goalBonus)cash*=.85;
+ if(t.sellOn)cash*=(1-t.sellOn/100*.5);
+ if(t.installment===1)cash*=.55;
+ if(t.installment===2)cash*=.4;
+ return Math.max(0,Math.round(cash))
+}
+function termsSummary(s,t){
+ const rows=[];if(!t)return"一次性付清";
+ if(t.installment)rows.push(`${t.installment+1}期付款`);
+ if(t.goalBonus)rows.push("进球奖金");
+ if(t.sellOn)rows.push(`下家分成${t.sellOn}%`);
+ if(t.swapId){const q=(s.roster||[]).find(x=>x.id===t.swapId);if(q)rows.push(`交换${q.name}`)}
+ return rows.length?rows.join(" · "):"一次性付清"
+}
+
+// 卖方接受概率：只看他眼里的价值与要价之比，加上关系、竞价压力与耐心
+function dealAcceptChance(s,d){
+ const p=d.player,worth=offerWorth(s,p,d.fee,d.terms),
+  ratio=worth/Math.max(1,d.ask),
+  directorFav=(s.npcs.find(n=>n.id==="director")||{fav:50}).fav,
+  rivalRel=p.origin===(rivalClub(s)||{}).name?relationPower("rival")*.15:0,
+  pressure=d.rivalFee?Math.max(0,(d.rivalFee-worth)/Math.max(1,d.ask))*.5:0,
+  fatigue=(3-d.patience)*.06;
+ return clamp(.12+ratio*.62+(directorFav-50)/190+rivalRel-pressure-fatigue,.05,.95)
+}
+// 对方还价：耐心越低越靠近你的报价
+function counterAsk(s,d,rng=Math.random){
+ const worth=offerWorth(s,d.player,d.fee,d.terms),gap=Math.max(0,d.ask-worth),
+  give=gap*(d.patience>=3?.18:d.patience===2?.3:.45)*rand(.8,1.2,rng);
+ return Math.max(worth,Math.round((d.ask-give)/10)*10)
+}
+function dealSwapCandidates(s,p){
+ return (s.roster||[]).filter(q=>q.injury<=0&&q.value<=p.value*1.1&&q.id!==p.id)
+  .sort((a,b)=>b.value-a.value).slice(0,3)
+}
+function startDeal(s,p,fee){
+ return{playerId:p.id,player:p,ask:p.ask,fee,terms:emptyTerms(),patience:3,round:1,
+  rivalFee:p.rivalBid?p.rivalBid.fee:0,walked:false,history:[]}
+}
+// 一次出价的结果："accept" | "counter" | "collapse"
+function pushDeal(s,d,rng=Math.random){
+ const chance=dealAcceptChance(s,d);
+ d.history.push({round:d.round,fee:d.fee,terms:termsSummary(s,d.terms),worth:offerWorth(s,d.player,d.fee,d.terms)});
+ if(rng()<chance)return"accept";
+ d.patience--;d.round++;
+ if(d.patience<=0)return"collapse";
+ d.ask=counterAsk(s,d,rng);
+ return"counter"
+}
+// 拍桌走人：晾一手，看对方会不会回头
+function walkAway(s,d,rng=Math.random){
+ d.walked=true;
+ const back=clamp(.5-(d.rivalFee?.2:0)+(d.patience-1)*.08,.15,.7);
+ if(rng()<back){d.ask=Math.round(Math.max(offerWorth(s,d.player,d.fee,d.terms),d.ask*.9)/10)*10;d.patience=Math.max(1,d.patience);return"return"}
+ return"gone"
+}
+
+/* ---- 未来负债：分期尾款 / 进球奖金 / 下家分成 ---- */
+function ensureLedger(s){if(!Array.isArray(s.ledger))s.ledger=[];return s.ledger}
+function addLiability(s,row){ensureLedger(s).push(row)}
+function settleLedger(s){
+ ensureLedger(s);const due=s.ledger.filter(x=>x.type==="installment"&&x.dueMonth<=s.globalMonth);
+ due.forEach(x=>{s.cash-=x.amount;gameLog(s,"bad",`支付${x.label}尾款 ${x.amount}万。`);risk(s,"finance",x.amount>600?4:1)});
+ s.ledger=s.ledger.filter(x=>!(x.type==="installment"&&x.dueMonth<=s.globalMonth));
+ return due
+}
+// 进球奖金：签下时挂在球员身上，达标即付
+function checkGoalBonuses(s){
+ ensureLedger(s);const paid=[];
+ s.ledger.filter(x=>x.type==="goalBonus").forEach(x=>{
+  const p=(s.roster||[]).find(q=>q.id===x.playerId);
+  if(p&&p.goals>=x.goals){s.cash-=x.amount;paid.push(x);gameLog(s,"bad",`${p.name}触发进球奖金条款，支付${x.amount}万。`)}});
+ if(paid.length)s.ledger=s.ledger.filter(x=>!paid.includes(x));
+ return paid
+}
+function sellOnDue(s,p,fee){
+ ensureLedger(s);const row=s.ledger.find(x=>x.type==="sellOn"&&x.playerId===p.id);
+ if(!row)return 0;
+ const cut=Math.round(fee*row.pct/100);
+ s.ledger=s.ledger.filter(x=>x!==row);
+ if(cut>0)gameLog(s,"bad",`${row.club}按分成条款拿走${cut}万。`);
+ return cut
+}
+function ledgerSummary(s){
+ ensureLedger(s);
+ const inst=s.ledger.filter(x=>x.type==="installment"),
+  bonus=s.ledger.filter(x=>x.type==="goalBonus"),
+  sell=s.ledger.filter(x=>x.type==="sellOn");
+ return{inst,bonus,sell,
+  owed:inst.reduce((a,x)=>a+x.amount,0),
+  contingent:bonus.reduce((a,x)=>a+x.amount,0)}
+}
+
+/* ================= 主动兜售与多方竞价 ================= */
+// 给自家球员标价挂牌。标价越高越难卖，但一旦有人接就是好价钱
+function listedPrice(p){return p.askPrice||Math.round(p.value*1.1/10)*10}
+function setListPrice(s,p,mult){
+ p.listed=true;p.askPrice=Math.round(p.value*mult/10)*10;
+ p.morale=clamp(p.morale-(mult<=1?9:mult<=1.4?6:3));
+ roomTension(s,mult<=1?8:4);
+ gameLog(s,"bad",`${p.name}被挂牌，标价${p.askPrice}万。`);
+ return p.askPrice
+}
+// 一家俱乐部会不会来问价：看标价相对身价、球队实力、球员能力
+function bidInterest(s,p,club,rng=Math.random){
+ const price=listedPrice(p),ratio=p.value/Math.max(1,price),
+  fit=clamp((p.ability-club.strength+8)/22,0,1),
+  rich=clamp((club.world&&club.world.budget?club.world.budget:3000)/9000,.1,1);
+ return clamp(.1+ratio*.42+fit*.3+rich*.2,.05,.92)
+}
+// 生成一份报价：不同俱乐部给的结构不一样，逼你在钱、现金流和关系之间选
+function makeBidOffer(s,p,club,rng=Math.random){
+ const price=listedPrice(p),style=pick(["cash","installment","swap","bonus"],rng),
+  base=Math.round(price*rand(.82,1.12,rng)/10)*10;
+ const o={id:`bid_${p.id}_${club.id}_${s.globalMonth}_${Math.floor(rng()*1e6)}`,
+  playerId:p.id,club:club.name,clubId:club.id,fee:base,style,
+  cashNow:base,note:"一次性付清",rival:club.id===s.rival.clubId};
+ if(style==="installment"){o.fee=Math.round(base*1.14/10)*10;o.cashNow=Math.round(o.fee*.5);o.note="分两期，总价更高"}
+ if(style==="bonus"){o.fee=Math.round(base*1.2/10)*10;o.cashNow=Math.round(base*.8);o.note="含出场奖金，先付八成"}
+ if(style==="swap"){o.swapRating=Math.round(clamp(p.ability+rand(-6,3,rng),42,82));o.cashNow=Math.round(base*.45);o.fee=base;o.note=`附带一名能力约${o.swapRating}的球员`}
+ o.playerWilling=clamp(Math.round(60+(club.strength-teamRating(s))*2.2+rand(-14,14,rng)),5,98);
+ return o
+}
+// 兜售一次：向若干家推销，收回若干报价
+function shopPlayer(s,p,rng=Math.random){
+ const clubs=(s.clubs||[]).filter(c=>c.id!=="me"),offers=[];
+ clubs.forEach(c=>{if(rng()<bidInterest(s,p,c,rng))offers.push(makeBidOffer(s,p,c,rng))});
+ offers.sort((a,b)=>b.fee-a.fee);
+ return offers.slice(0,4)
+}
+// 卖给宿敌是要付代价的
+function acceptBid(s,p,o){
+ const cut=sellOnDue(s,p,o.fee);
+ s.cash+=o.cashNow-cut;
+ if(o.cashNow<o.fee)addLiability(s,{type:"installment",amount:o.fee-o.cashNow,dueMonth:s.globalMonth+MONTHS_PER_SEASON,label:`${o.club}购买${p.name}`,incoming:true});
+ s.track.sold++;s.track.transferIncome+=o.fee;
+ archiveClubPlayer(s,p,`转会至${o.club}`);
+ roomShock(s,"sell",p);
+ s.roster=s.roster.filter(x=>x.id!==p.id);
+ s.incomingOffers=(s.incomingOffers||[]).filter(x=>x.playerId!==p.id);
+ if(o.rival){s.fans=clamp(s.fans-9);risk(s,"fans",10);s.rival.grudge=clamp(s.rival.grudge+10,0,100);
+  gameLog(s,"bad",`把${p.name}卖给了宿敌。北看台已经在写横幅了。`);
+  addLeagueNews(s,"transfer",`${o.club}从死敌手里签下${p.name}`,`${o.fee}万，这笔交易在城里没人愿意提。`,o.clubId)}
+ else{if(p.ability>=70){s.fans=clamp(s.fans-4);risk(s,"fans",6)}
+  addLeagueNews(s,"transfer",`${o.club}签下${p.name}`,`${o.fee}万，${s.clubName}收下这笔钱。`,o.clubId)}
+ s.clubHistory.transfers.unshift({season:s.season,month:s.seasonMonth,type:"out",player:p.name,pos:p.pos,fee:o.fee,from:s.clubName,to:o.club,apps:p.apps,goals:p.goals,terms:o.note});
+ s.worldTransfers.unshift({season:s.season,month:s.seasonMonth,player:p.name,pos:p.pos,rating:p.ability,fee:o.fee,from:s.clubName,to:o.club});
+ gameLog(s,"good",`以${o.fee}万将${p.name}出售给${o.club}（${o.note}）。`);
+ return o
+}
+
+/* ================= 转会截止日 ================= */
+function deadlineStar(s){return (s.roster||[]).filter(p=>p.ability>=64&&!p.listed).sort((a,b)=>b.ability-a.ability)[0]||null}
+function deadlineTarget(s){return (s.market||[]).slice().sort((a,b)=>(s.shortlist.includes(b.id)?9:0)-(s.shortlist.includes(a.id)?9:0)+b.potential-a.potential)[0]||null}
+
+function deadlineBeats(s,rng=Math.random){
+ const rows=[],star=deadlineStar(s),target=deadlineTarget(s);
+ if(star){
+  const club=pick((s.clubs||[]).filter(c=>c.id!=="me"),rng),
+   fee=Math.round(valueFor(star)*rand(1.15,1.5,rng)/10)*10;
+  rows.push({key:"lateBid",title:`截止日 · ${club.name}临门一脚`,
+   body:`离窗口关闭还有几个小时，${club.name}把一份${fee}万的报价拍在桌上，买${star.name}。\n\n对方说得很清楚：过了今晚就撤回。你没有时间做球探报告，也没有时间找替代者。`,
+   options:()=>[
+    eventOption(`收下${fee}万`,"现金到账，阵容立刻少一个人",()=>{
+     s.cash+=fee-sellOnDue(s,star,fee);s.track.sold++;s.track.transferIncome+=fee;
+     archiveClubPlayer(s,star,`转会至${club.name}`);roomShock(s,"sell",star);
+     s.roster=s.roster.filter(x=>x.id!==star.id);s.fans=clamp(s.fans-6);risk(s,"fans",7);
+     addLeagueNews(s,"transfer",`${club.name}截止日签下${star.name}`,`${fee}万，${s.clubName}在最后几小时松了口。`,club.id);
+     gameLog(s,"bad",`截止日以${fee}万卖掉了${star.name}。`)}),
+    eventOption("挂电话","球迷和他都会记住这一下",()=>{
+     star.morale=clamp(star.morale+8);s.fans=clamp(s.fans+4);roomTension(s,-5);
+     gameLog(s,"good",`拒绝了${club.name}对${star.name}的截止日报价。`)}),
+    eventOption(`回价 ${Math.round(fee*1.3/10)*10}万`,"要么多赚三成，要么他们直接走人",()=>{
+     if(rng()<.42){const up=Math.round(fee*1.3/10)*10;s.cash+=up-sellOnDue(s,star,up);s.track.sold++;s.track.transferIncome+=up;
+      archiveClubPlayer(s,star,`转会至${club.name}`);roomShock(s,"sell",star);
+      s.roster=s.roster.filter(x=>x.id!==star.id);s.fans=clamp(s.fans-6);risk(s,"fans",7);
+      gameLog(s,"good",`把${star.name}的转会费抬到了${up}万。`)}
+     else{s.fans=clamp(s.fans+2);gameLog(s,"","对方没有接受回价，电话挂断了。")}})]});
+ }
+ if(target){
+  const extra=Math.round(target.ask*rand(.12,.22,rng)/10)*10,total=target.ask+extra;
+  rows.push({key:"agentPush",title:`截止日 · ${target.agent}的最后通牒`,
+   body:`${target.agent}深夜打来电话：${target.name}今晚就能签字，但要一笔${extra}万的额外签字费，转会费按${target.ask}万走，一共${total}万。\n\n“明天早上他就在别人的体检室里了。”`,
+   options:()=>[
+    eventOption(`付 ${total}万，今晚签下`,`能力判断${scoutRanges(target).ability}${target.scoutLevel<2?"（报告不足，有风险）":""}`,()=>{
+     if(s.cash<total){gameLog(s,"bad","账上钱不够，电话那头笑了一声。");return}
+     s.cash-=total;s.track.bought++;s.track.transferSpend+=target.ask;
+     target.origin="本队";target.scoutLevel=3;target.scouted=true;target.signedMonth=s.globalMonth;
+     target.releaseClause=Math.round(Math.max(target.value,target.ask)*1.65/10)*10;
+     s.roster.push(target);s.market=s.market.filter(x=>x.id!==target.id);
+     s.shortlist=s.shortlist.filter(x=>x!==target.id);
+     addLeagueNews(s,"transfer",`${s.clubName}截止日签下${target.name}`,`${total}万，全部条款在窗口关闭前四十分钟敲定。`,"me");
+     gameLog(s,"good",`截止日以${total}万签下${target.name}。`)},s.cash<total),
+    eventOption("拒绝，按原价或者不谈","他可能真的去别人那儿",()=>{
+     if(rng()<.5){s.market=s.market.filter(x=>x.id!==target.id);s.shortlist=s.shortlist.filter(x=>x!==target.id);
+      addLeagueNews(s,"transfer",`${target.name}在截止日加盟他队`,`${s.clubName}没有接受经纪人的加价。`);
+      gameLog(s,"bad",`${target.name}去了别处。`)}
+     else{target.willing=clamp(target.willing-6);gameLog(s,"",`${target.agent}没能把${target.name}送走，他留在了市场上。`)}})]});
+ }
+ return rows
+}
+function pickDeadlineBeats(s,rng=Math.random){
+ const all=deadlineBeats(s,rng);
+ if(!all.length)return[];
+ return all.filter(()=>rng()<.75).slice(0,2)
+}
+
 function eventOption(text,sub,fn,disabled=false){return{text,sub,fn,disabled}}
 function gameLog(s,cls,text){s.log.unshift({cls,text:`第${s.season}赛季${s.seasonMonth}月 · ${text}`});s.log=s.log.slice(0,180)}
 function risk(s,key,v){s.risks[key]=clamp((s.risks[key]||0)+v,0,120)}
 function relation(s,id,v){const n=s.npcs.find(x=>x.id===id);if(n)n.fav=clamp(n.fav+v)}
-function playerName(used=[],rng=Math.random){let n,guard=0;do{n=pick(SURNAMES,rng)+pick(GIVEN,rng)}while(used.includes(n)&&guard++<40);return n}
+function playerName(used=[],rng=Math.random,foreign=false){
+ const spare=customNames.filter(x=>!used.includes(x));
+ if(spare.length)return pick(spare,rng);
+ let n,guard=0;do{n=foreign?foreignName(rng):pick(SURNAMES,rng)+pick(GIVEN,rng)}while(used.includes(n)&&guard++<40);return n}
 function valueFor(p){const ageFactor=p.age<=22?1.12:p.age<=27?1:p.age<=30?.78:.48,potFactor=1+Math.max(0,p.potential-p.ability)/70;return Math.max(40,Math.round((p.ability-35)**2*1.55*ageFactor*potFactor/10)*10)}
-function makePlayer(pos,base=58,ageBias=0,used=[],origin="本队",rng=Math.random,youth=false){const age=youth?Math.round(rand(16,19,rng)):clamp(Math.round(rand(20,31,rng)+ageBias),18,35),ability=clamp(Math.round(base+rand(-8,8,rng)-(age>31?(age-31)*1.3:0)),youth?35:42,82),potential=clamp(Math.round(Math.max(ability,ability+rand(age<=21?5:0,age<=23?20:age<=27?8:3,rng))),ability,91);const p={id:`p_${Date.now()}_${Math.floor(rng()*1e8)}`,name:playerName(used,rng),pos,age,ability,potential,form:Math.round(rand(45,72,rng)),morale:Math.round(rand(48,75,rng)),value:0,wage:youth?round(rand(1.2,3.2,rng),1):round(Math.max(2,(ability-40)*.72+rand(-3,4,rng)),1),contract:youth?24:Math.round(rand(9,34,rng)),origin,listed:false,injury:0,suspended:0,goals:0,apps:0,scouted:origin==="本队",trait:pick(["稳定","大场面","训练认真","容易急躁","本地球员","沉默寡言","更衣室活跃"],rng),persona:pick(PERSONA_POOL,rng)};p.value=valueFor(p);enrichTransferPlayer(p,null,rng);return p}
+function makePlayer(pos,base=58,ageBias=0,used=[],origin="本队",rng=Math.random,youth=false,foreign=false){const age=youth?Math.round(rand(16,19,rng)):clamp(Math.round(rand(20,31,rng)+ageBias),18,35),ability=clamp(Math.round(base+rand(-8,8,rng)-(age>31?(age-31)*1.3:0)),youth?35:42,82),potential=clamp(Math.round(Math.max(ability,ability+rand(age<=21?5:0,age<=23?20:age<=27?8:3,rng))),ability,91);const p={id:`p_${Date.now()}_${Math.floor(rng()*1e8)}`,name:playerName(used,rng,foreign),foreign,pos,age,ability,potential,form:Math.round(rand(45,72,rng)),morale:Math.round(rand(48,75,rng)),value:0,wage:youth?round(rand(1.2,3.2,rng),1):round(Math.max(2,(ability-40)*.72+rand(-3,4,rng)),1),contract:youth?24:Math.round(rand(9,34,rng)),origin,listed:false,injury:0,suspended:0,goals:0,apps:0,scouted:origin==="本队",trait:pick(["稳定","大场面","训练认真","容易急躁","本地球员","沉默寡言","更衣室活跃"],rng),persona:pick(PERSONA_POOL,rng)};p.value=valueFor(p);enrichTransferPlayer(p,null,rng);return p}
 function playerStyleFit(p,style){if(!p?.role||!style)return 0;return STYLE_ROLE_FIT[style]?.includes(p.role)?2:-1}
 function enrichTransferPlayer(p,s=null,rng=Math.random){if(!p)return p;p.role=p.role||pick(ROLE_BY_POS[p.pos]||["boxToBox"],rng);p.agent=p.agent||pick((s?.npcs||[]).filter(n=>n.group==="经纪人").map(n=>n.name).concat(["宋哲","许曼","高驰"]),rng);p.ambition=Number.isFinite(p.ambition)?p.ambition:Math.round(rand(35,88,rng));p.loyalty=Number.isFinite(p.loyalty)?p.loyalty:Math.round(rand(30,86,rng));p.adaptability=Number.isFinite(p.adaptability)?p.adaptability:Math.round(rand(38,90,rng));p.injuryRisk=Number.isFinite(p.injuryRisk)?p.injuryRisk:Math.round(rand(18,76,rng));p.scoutLevel=Number.isFinite(p.scoutLevel)?p.scoutLevel:(p.scouted||p.origin==="本队"||p.origin==="青训营"?3:0);p.scouted=p.scoutLevel>=3;p.rivalClubs=Array.isArray(p.rivalClubs)?p.rivalClubs:[];return p}
 function ensureTransferState(s,rng=Math.random){s.shortlist=Array.isArray(s.shortlist)?s.shortlist:[];s.transferRumors=Array.isArray(s.transferRumors)?s.transferRumors:[];s.transferWindowState=s.transferWindowState||{lastDeadline:0};s.clubHistory=s.clubHistory||{seasons:[],honours:[],milestones:[],players:{}};s.clubHistory.transfers=Array.isArray(s.clubHistory.transfers)?s.clubHistory.transfers:[];[...(s.roster||[]),...(s.youth||[]),...(s.market||[])].forEach(p=>enrichTransferPlayer(p,s,rng));s.shortlist=s.shortlist.filter(id=>(s.market||[]).some(p=>p.id===id));return s}
 function squadDiagnosis(s){ensureTransferState(s);const starterNeed={GK:1,DEF:4,MID:3,FWD:3},safeNeed={GK:2,DEF:7,MID:6,FWD:5},rating=teamRating(s),rows=Object.keys(starterNeed).map(pos=>{const players=s.roster.filter(p=>p.pos===pos),available=players.filter(p=>p.injury<=0&&p.suspended<=0),starters=available.slice().sort((a,b)=>playerCurrent(b,s.coach.style)-playerCurrent(a,s.coach.style)).slice(0,starterNeed[pos]),avg=starters.length?round(starters.reduce((a,p)=>a+p.ability,0)/starters.length,1):0,age=starters.length?round(starters.reduce((a,p)=>a+p.age,0)/starters.length,1):0,fit=starters.filter(p=>playerStyleFit(p,s.coach.style)>0).length,expiring=players.filter(p=>p.contract<=6).length;let score=0,reasons=[];if(available.length<safeNeed[pos]){score+=3;reasons.push(`仅${available.length}名可用`)}if(avg<rating-2){score+=2;reasons.push(`主力均值${avg}`)}if(age>=30){score+=2;reasons.push(`主力均龄${age}`)}if(fit<Math.ceil(starterNeed[pos]/2)){score+=1;reasons.push(`适配${STYLES[s.coach.style]}者不足`)}if(expiring){score+=1;reasons.push(`${expiring}人半年内到期`)}return{pos,score,count:available.length,avg,age,fit,expiring,reason:reasons.join("；")||"深度与质量暂时健康",recommended:Math.max(52,Math.round(rating+(score>=4?2:0)))}});return rows.sort((a,b)=>b.score-a.score||a.count-b.count)}
 function estimateTransferImpact(s,p){const before=teamRating(s),after=teamRating({...s,roster:[...s.roster,p]});return round(after-before,1)}
 function scoutRanges(p){const lv=p.scoutLevel||0,spread=[8,4,2,0][lv],potSpread=[16,9,4,0][lv];return{ability:lv>=3?`${p.ability}`:`${Math.max(35,p.ability-spread)}-${Math.min(90,p.ability+spread)}`,potential:lv>=3?`${p.potential}`:`${Math.max(p.ability,p.potential-potSpread)}-${Math.min(94,p.potential+potSpread)}`,wage:lv>=2?`${p.wage}万`:`${Math.max(1,Math.round(p.wage*.75))}-${Math.round(p.wage*1.35)}万`,confidence:["初步名单","基础报告","重点报告","完整报告"][lv]}}
-function createRoster(a,rng=Math.random){const used=[],plan={GK:3,DEF:9,MID:8,FWD:6},rows=[];Object.entries(plan).forEach(([pos,n])=>{for(let i=0;i<n;i++){const p=makePlayer(pos,a.base,a.ageBias,used,"本队",rng);used.push(p.name);rows.push(p)}});return rows}
+function markForeigners(rows,count,rng=Math.random){
+ // 中超每队外援有限，通常是队里最贵的几个非门将。只改名字与标签，能力/工资一概不动
+ rows.slice().filter(p=>p.pos!=="GK").sort((a,b)=>b.ability-a.ability).slice(0,count).forEach(p=>{
+  p.foreign=true;if(!customNames.length)p.name=foreignName(rng)});
+ return rows}
+function createRoster(a,rng=Math.random){const used=[],plan={GK:3,DEF:9,MID:8,FWD:6},rows=[];Object.entries(plan).forEach(([pos,n])=>{for(let i=0;i<n;i++){const p=makePlayer(pos,a.base,a.ageBias,used,"本队",rng);used.push(p.name);rows.push(p)}});return markForeigners(rows,4,rng)}
 function createYouth(a,rng=Math.random,count=8){const used=[],seq=["GK","DEF","DEF","MID","MID","MID","FWD","FWD"],rows=[];for(let i=0;i<count;i++){const p=makePlayer(seq[i%seq.length],40+a.academy*3,0,used,"青训营",rng,true);used.push(p.name);rows.push(p)}return rows}
 function makeCoach(level=60,rng=Math.random){const coaching=clamp(Math.round(level+rand(-6,7,rng)),45,86),tactical=clamp(Math.round(level+rand(-9,8,rng)),40,88),youth=clamp(Math.round(level+rand(-12,12,rng)),35,90),discipline=clamp(Math.round(level+rand(-10,10,rng)),38,90),reputation=clamp(Math.round(level+rand(-10,10,rng)),38,88);return{id:`c_${Date.now()}_${Math.floor(rng()*1e7)}`,name:pick(COACH_NAMES,rng),coaching,tactical,youth,discipline,reputation,style:pick(Object.keys(STYLES),rng),salary:round(12+(coaching+tactical+reputation-150)*.32,1),fee:Math.max(0,Math.round((reputation-48)*18)),authority:60,months:0}}
 function createNpcs(a){return[
@@ -565,13 +817,13 @@ function recordWorldResult(s,a,b,gf,ga,rng=Math.random){[a,b].forEach((c,i)=>{if
 function processWorldMonth(s,rng=Math.random){ensureLivingWorld(s,rng);const before=sortedTable(s),leaderBefore=s.world.lastLeader;s.clubs.filter(c=>c.id!=="me").forEach(c=>{const old=c.strength,wins=c.world.form.filter(x=>x==="W").length,losses=c.world.form.filter(x=>x==="L").length;c.world.coach.months++;c.world.budget=Math.round(clamp(c.world.budget+90+(c.points||0)*3+rand(-80,120,rng),500,9000));c.strength=round(clamp(c.strength+(wins-losses)*.045+rand(-.22,.22,rng),48,80),1);c.world.trend=round(c.strength-old,1)});if(inTransferWindow(s)){const active=s.clubs.filter(c=>c.id!=="me");for(let i=0;i<2;i++){const buyer=pick(active,rng);let seller=pick(active.filter(c=>c.id!==buyer.id),rng),used=active.map(c=>c.world.star?.name).filter(Boolean),player;if(rng()<.2&&seller.world.star){player={...seller.world.star};seller.world.star=makeWorldStar(seller,rng,used)}else player=makeWorldStar({strength:round((buyer.strength+seller.strength)/2,1)},rng,used);const fee=Math.max(180,Math.round(player.value*rand(.78,1.18,rng)/10)*10);buyer.world.budget=Math.max(200,buyer.world.budget-fee);seller.world.budget=Math.min(9500,seller.world.budget+fee);const buyerOld=buyer.strength;buyer.strength=round(clamp(buyer.strength+Math.max(.15,(player.rating-buyer.strength)*.12),48,80),1);seller.strength=round(clamp(seller.strength-rand(.05,.35,rng),48,80),1);if(!buyer.world.star||player.rating>buyer.world.star.rating)buyer.world.star={...player};const deal={season:s.season,month:s.seasonMonth,player:player.name,pos:player.pos,rating:player.rating,fee,from:seller.name,to:buyer.name};s.worldTransfers.unshift(deal);s.worldTransfers=s.worldTransfers.slice(0,60);addLeagueNews(s,"transfer",`${buyer.name}签下${player.name}`,`${seller.name}收到${fee}万；${POS[player.pos]}能力${player.rating}，让${buyer.name}实力${signed(buyer.strength-buyerOld)}。`,buyer.id)}}const table=sortedTable(s),under=table.filter((c,i)=>c.id!=="me"&&i+1>(c.world?.ambition||8)+2&&c.world?.form.filter(x=>x==="L").length>=3).sort((a,b)=>(b.world.form.filter(x=>x==="L").length-a.world.form.filter(x=>x==="L").length))[0];if(s.seasonMonth>=3&&under&&rng()<.58){const old=under.world.coach,newCoach={name:pick(COACH_NAMES.filter(n=>n!==old.name),rng),style:pick(Object.keys(STYLES),rng),months:0};under.world.coach=newCoach;under.style=newCoach.style;under.world.stability=clamp(under.world.stability-8);under.strength=round(clamp(under.strength+rand(-.2,.7,rng),48,80),1);addLeagueNews(s,"coach",`${under.name}宣布换帅`,`${old.name}离任，${newCoach.name}改打${STYLES[newCoach.style]}。`,under.id)}if(rng()<.48){const club=pick(s.clubs.filter(c=>c.id!=="me"),rng),young=makeWorldStar({strength:club.strength+club.world.academy*.45},rng,s.clubs.map(c=>c.world?.star?.name).filter(Boolean));young.age=Math.round(rand(17,20,rng));young.value=Math.round(young.value*.72/10)*10;if(!club.world.star||young.rating>=club.world.star.rating)club.world.star=young;club.strength=round(clamp(club.strength+rand(.1,.45,rng),48,80),1);addLeagueNews(s,"youth",`${club.name}青训冒出${young.name}`,`${young.age}岁的${POS[young.pos]}进入一线队，能力评估${young.rating}。`,club.id)}const leader=table[0];if(leader&&leaderBefore&&leader.id!==leaderBefore)addLeagueNews(s,"table",`${leader.name}登上积分榜首`,`${leader.points}分领跑，净胜球${signed(leader.gf-leader.ga,0)}。`,leader.id);s.world.lastLeader=leader?.id||null;if([5,10].includes(s.seasonMonth)&&leader)addLeagueNews(s,"table",`联赛阶段观察：${leader.name}领跑`,`${table.slice(0,3).map((c,i)=>`${i+1}.${c.name} ${c.points}分`).join("；")}。`,leader.id)}
 function prepareNextSeasonClubs(s,rng=Math.random){ensureLivingWorld(s,rng);const relegatedIds=(s.world.lastRelegated||[]).map(x=>x.id),old=s.clubs,me=old.find(c=>c.id==="me")||{id:"me",name:s.clubName};me.name=s.clubName;me.strength=teamRating(s);me.style=s.coach.style;Object.assign(me,{points:0,w:0,d:0,l:0,gf:0,ga:0});enrichWorldClub(me,0,rng);let rivals=old.filter(c=>c.id!=="me"&&!relegatedIds.includes(c.id));rivals.forEach((c,i)=>{const was=c.strength;c.strength=round(clamp(c.strength+rand(-1.1,1.25,rng)+(c.world.budget>5000?.3:0),48,80),1);Object.assign(c,{points:0,w:0,d:0,l:0,gf:0,ga:0});c.world.form=[];c.world.trend=round(c.strength-was,1);c.world.star.age++;c.world.star.goals=0;if(c.world.star.age>=31)c.world.star.rating=Math.max(48,c.world.star.rating-1);c.world.coach.months++;enrichWorldClub(c,i+1,rng)});while(rivals.length<11){const idx=s.world.promotedIndex++%PROMOTED_SEEDS.length,seed=PROMOTED_SEEDS[idx],c={id:`promoted_${s.season}_${idx}_${rivals.length}`,name:seed[0],strength:round(seed[1]+rand(-1,1.5,rng),1),style:seed[2],points:0,w:0,d:0,l:0,gf:0,ga:0};enrichWorldClub(c,rivals.length+1,rng);c.world.ambition=10;c.world.trait="升班马，首要任务是留在顶级联赛";c.world.isPromoted=true;rivals.push(c);addLeagueNews(s,"table",`${c.name}升入顶级联赛`,"新赛季的第一目标是保级，也希望复制黑马故事。",c.id)}const keep=rivals.slice(0,11);if(s.rival&&s.rival.clubId&&!s.rival.gone&&!keep.some(c=>c.id===s.rival.clubId)){s.rival.gone=true;s.rival.goneName=(old.find(c=>c.id===s.rival.clubId)||{}).name||"宿敌";addMilestone(s,`${s.rival.goneName}降级`,`德比战绩定格在${derbyRecord(s)}。这座城市暂时只剩一支顶级联赛球队。`,"gold");addLeagueNews(s,"table",`${s.rival.goneName}降入次级联赛`,`与${s.clubName}的德比暂时从赛程上消失。`);s.fans=clamp(s.fans+4);gameLog(s,"good",`${s.rival.goneName}降级了。有人在北看台放了一整晚的烟花。`)}s.world.lastLeader=null;return[me,...keep]}
 function recordClubMatch(s,r){ensureLivingWorld(s);if(!s.clubHistory.firstMatch){s.clubHistory.firstMatch=true;addMilestone(s,"队史新篇章的第一场比赛",`${r.competition}对阵${r.opponent}，比分${r.gf}-${r.ga}。`)}if(r.gf>r.ga&&!s.clubHistory.firstWin){s.clubHistory.firstWin=true;addMilestone(s,"新老板时代首胜",`${r.competition}击败${r.opponent}，比分${r.gf}-${r.ga}。`,"gold")}syncClubPlayers(s)}
-function makeMarket(s,rng=Math.random){s.shortlist=Array.isArray(s.shortlist)?s.shortlist:[];const retained=(s.market||[]).filter(p=>s.shortlist.includes(p.id)),used=[...s.roster,...s.youth,...retained].map(p=>p.name),rows=[...retained],clubs=s.clubs.filter(c=>c.id!=="me");for(let i=rows.length;i<14;i++){const pos=["GK","DEF","MID","FWD"][i%4],club=pick(clubs,rng),base=clamp(club.strength+rand(-10,9,rng),45,78),p=makePlayer(pos,base,rand(-1,2,rng),used,club.name,rng);used.push(p.name);p.scouted=false;p.scoutLevel=0;p.ask=Math.round(p.value*rand(.92,1.28,rng)/10)*10;p.willing=clamp(50+s.reputation-club.strength+rand(-20,18,rng),18,92);p.rivalClubs=clubs.filter(c=>c.id!==club.id&&rng()<clamp((p.ability-56)/70,.04,.28)).slice(0,2).map(c=>c.name);enrichTransferPlayer(p,s,rng);rows.push(p)}return rows}
+function makeMarket(s,rng=Math.random){s.shortlist=Array.isArray(s.shortlist)?s.shortlist:[];const retained=(s.market||[]).filter(p=>s.shortlist.includes(p.id)),used=[...s.roster,...s.youth,...retained].map(p=>p.name),rows=[...retained],clubs=s.clubs.filter(c=>c.id!=="me");for(let i=rows.length;i<14;i++){const pos=["GK","DEF","MID","FWD"][i%4],club=pick(clubs,rng),base=clamp(club.strength+rand(-10,9,rng),45,78),foreign=pos!=="GK"&&rng()<.32,p=makePlayer(pos,base,rand(-1,2,rng),used,club.name,rng,false,foreign);used.push(p.name);p.scouted=false;p.scoutLevel=0;p.ask=Math.round(p.value*rand(.92,1.28,rng)/10)*10;p.willing=clamp(50+s.reputation-club.strength+rand(-20,18,rng),18,92);p.rivalClubs=clubs.filter(c=>c.id!==club.id&&rng()<clamp((p.ability-56)/70,.04,.28)).slice(0,2).map(c=>c.name);enrichTransferPlayer(p,s,rng);rows.push(p)}return rows}
 function makeCoachCandidates(s,rng=Math.random){return Array.from({length:4},(_,i)=>makeCoach(clamp(s.reputation+rand(-8,8,rng),48,75),rng))}
 function sponsorRequirement(rng=Math.random){return pick([{key:"rank",target:6,text:"赛季排名前6"},{key:"fans",target:62,text:"球迷支持达到62"},{key:"youth",target:2,text:"赛季至少提拔2名青训"},{key:"cup",target:2,text:"杯赛至少进入八强"}],rng)}
 function makeSponsorOffers(s,rng=Math.random){const result={};Object.keys(SPONSOR_SLOTS).forEach((slot,si)=>{result[slot]=Array.from({length:2},(_,i)=>{const quality=clamp(s.reputation+s.npcs.filter(n=>n.group==="赞助商").reduce((a,n)=>a+n.fav,0)/12+rand(-8,10,rng),35,95),req=sponsorRequirement(rng),base={shirt:2.6,kit:1.8,stadium:2.15}[slot];return{id:`sp_${slot}_${s.globalMonth}_${i}`,name:pick(SPONSOR_NAMES,rng),slot,monthly:Math.round(quality*base),bonus:Math.round(quality*4.5),reqKey:req.key,target:req.target,requirement:req.text,penalty:Math.round(quality*3)}})});return result}
 function targetBoard(s){const seasons=[1,2,3].map(season=>{const t=seasonTargets({...s,season}),past=s.history.find(h=>h.season===season);return{season,boardRank:t.boardRank,boardCup:t.boardCup,fanRank:t.fanRank,fanWins:t.fanWins,done:past?past.rank<=t.boardRank:null,rank:past?past.rank:null}}),cur=seasonTargets(s),rank=leagueRank(s),needRank=Math.max(0,rank-cur.boardRank),needWins=Math.max(0,cur.fanWins-s.seasonWins),progress=`本季董事会要前${cur.boardRank}:${needRank>0?`还差${needRank}名`:"已达标"};球迷要${cur.fanWins}胜:${needWins>0?`还差${needWins}胜`:"已达标"}`;return{seasons,progress}}
 function seasonTargets(s){const base=ARCHETYPES[s.archetype].target,improve=Math.max(0,s.season-1),boardRank=clamp(base-improve,2,10),fanRank=clamp(base+(s.archetype==="fallen"?-1:1)-improve,2,10);return{boardRank,boardCup:s.season>=2?2:1,fanRank,fanWins:s.archetype==="fallen"?9:7}}
-function initialState(config,rng=Math.random){const a=ARCHETYPES[config.archetype],s={version:SAVE_VERSION,ownerName:config.ownerName,city:config.city,clubName:config.clubName,archetype:config.archetype,season:1,seasonMonth:1,globalMonth:1,energy:4,cash:a.cash,debt:a.debt,fans:a.fans,board:a.board,reputation:a.reputation,wageBudget:a.wageBudget,roster:[],youth:[],coach:null,coachCandidates:[],npcs:createNpcs(config.archetype),clubs:[],schedule:[],market:[],incomingOffers:[],sponsors:{shirt:null,kit:null,stadium:null},sponsorOffers:{},stadium:{...a.stadium},facilityProjects:[],academyLevel:a.academy,targets:null,cup:{alive:true,stage:0,winner:false,results:[]},risks:{finance:a.debt>6000?38:16,dressing:18,fans:12,safety:a.stadium.safety<=2?30:12,compliance:10},warningMonth:{},warnings:{finance:0,dressing:0,fans:0,safety:0,compliance:0},seasonWins:0,seasonDraws:0,seasonLosses:0,seasonYouth:0,history:[],matchHistory:[],usedEvents:[],lastEvent:null,flags:{},track:{bought:0,sold:0,transferSpend:0,transferIncome:0,youthPromoted:0,trophies:0,leagueTitles:0,coachChanges:0,facilityUpgrades:0,sponsorIncome:0,gateIncome:0,maxCash:a.cash,maxFans:a.fans},last:{income:0,expense:0,net:0},lastDelta:{},tab:"overview",squadFilter:"all",marketFilter:"all",relationFilter:"all",log:[],over:false,endData:null};s.roster=createRoster(a,rng);s.youth=createYouth(a,rng);s.coach=makeCoach(a.base+2,rng);s.clubs=makeClubs(s,rng);s.schedule=createSchedule(s.clubs);s.market=makeMarket(s,rng);s.coachCandidates=makeCoachCandidates(s,rng);s.sponsorOffers=makeSponsorOffers(s,rng);s.targets=seasonTargets(s);s.sponsors.shirt={...s.sponsorOffers.shirt[0],months:10};ensureLivingWorld(s,rng);ensureDrama(s);captainOf(s);gameLog(s,"month",`${s.clubName}完成股权交割。董事会要求联赛前${s.targets.boardRank}，球迷期待前${s.targets.fanRank}。`);return s}
+function initialState(config,rng=Math.random){const a=ARCHETYPES[config.archetype],s={version:SAVE_VERSION,ownerName:config.ownerName,city:config.city,clubName:config.clubName,archetype:config.archetype,season:1,seasonMonth:1,globalMonth:1,energy:4,cash:a.cash,debt:a.debt,fans:a.fans,board:a.board,reputation:a.reputation,wageBudget:a.wageBudget,roster:[],youth:[],coach:null,coachCandidates:[],npcs:createNpcs(config.archetype),clubs:[],schedule:[],market:[],incomingOffers:[],sponsors:{shirt:null,kit:null,stadium:null},sponsorOffers:{},stadium:{...a.stadium},facilityProjects:[],academyLevel:a.academy,targets:null,cup:{alive:true,stage:0,winner:false,results:[]},risks:{finance:a.debt>6000?38:16,dressing:18,fans:12,safety:a.stadium.safety<=2?30:12,compliance:10},warningMonth:{},warnings:{finance:0,dressing:0,fans:0,safety:0,compliance:0},seasonWins:0,seasonDraws:0,seasonLosses:0,seasonYouth:0,history:[],matchHistory:[],usedEvents:[],lastEvent:null,flags:{},track:{bought:0,sold:0,transferSpend:0,transferIncome:0,youthPromoted:0,trophies:0,leagueTitles:0,coachChanges:0,facilityUpgrades:0,sponsorIncome:0,gateIncome:0,maxCash:a.cash,maxFans:a.fans},last:{income:0,expense:0,net:0},ledger:[],lastDelta:{},tab:"overview",squadFilter:"all",marketFilter:"all",relationFilter:"all",log:[],over:false,endData:null};s.roster=createRoster(a,rng);s.youth=createYouth(a,rng);s.coach=makeCoach(a.base+2,rng);s.clubs=makeClubs(s,rng);s.schedule=createSchedule(s.clubs);s.market=makeMarket(s,rng);s.coachCandidates=makeCoachCandidates(s,rng);s.sponsorOffers=makeSponsorOffers(s,rng);s.targets=seasonTargets(s);s.sponsors.shirt={...s.sponsorOffers.shirt[0],months:10};ensureLivingWorld(s,rng);ensureDrama(s);captainOf(s);gameLog(s,"month",`${s.clubName}完成股权交割。董事会要求联赛前${s.targets.boardRank}，球迷期待前${s.targets.fanRank}。`);return s}
 
 function sortedTable(s){return s.clubs.slice().sort((a,b)=>b.points-a.points||(b.gf-b.ga)-(a.gf-a.ga)||b.gf-a.gf)}
 function leagueRank(s){return 1+sortedTable(s).findIndex(c=>c.id==="me")}
@@ -653,14 +905,24 @@ function renderClubStrip(){const cup=S.cup.winner?"足协杯冠军":S.cup.alive?
 function renderActions(){$("#actions").innerHTML=ACTIONS.map((a,i)=>`<div class="action ${S.energy<=0?"off":""}" onclick="ACTIONS[${i}].fn()"><div class="glyph">${a.glyph}</div><div class="name">${a.name}</div><div class="desc">${a.desc}</div></div>`).join("");$("#energyDots").textContent="●".repeat(S.energy)+"○".repeat(4-S.energy)}
 function renderFixturePreview(x){if(!x.preview)return`<div class="card fixture-preview"><div class="fixture-top"><span class="when">${esc(x.competition)}</span><span class="teams">抽签待定 vs ${esc(x.opponent)}</span><span class="outlook even">等待对手</span></div><div class="fixture-reason">杯赛对手和主客场将在比赛前确定，教练会在抽签后自动提交阵容。</div></div>`;const p=x.preview;return`<div class="card fixture-preview"><div class="fixture-top"><span class="when">${esc(x.competition)}<br>${x.home?"主场":"客场"}</span><span class="teams">${esc(S.clubName)} vs ${esc(x.opponent)}</span><span class="outlook ${p.tone}">${p.label}</span></div><div class="factor-strip"><span class="factor-chip ${edgeTone(p.ourRating-p.oppRating,1.5)}">综合 ${p.ourRating} : ${p.oppRating}</span><span class="factor-chip ${edgeTone(p.styleDelta,.4)}">战术 ${signed(p.styleDelta)}</span><span class="factor-chip ${edgeTone(p.homeDelta+p.pitchDelta,.4)}">场地 ${signed(p.homeDelta+p.pitchDelta)}</span><span class="factor-chip ${p.unavailableCount?"bad":"good"}">${p.unavailableCount?`${p.unavailableCount}人缺阵`:"阵容齐整"}</span><span class="factor-chip">预期进球 ${p.myXg}-${p.oppXg}</span></div><div class="fixture-reason">${esc(p.brief)}</div></div>`}
 function renderOverview(){ensureLivingWorld(S);const f=projectedFinance(S),fixtures=nextFixtures(S),table=sortedTable(S).slice(0,6),headlines=S.leagueNews.slice(0,2);$("#panel").innerHTML=`<div class="metric-grid"><div class="metric"><div class="v">${leagueRank(S)}</div><div class="k">当前排名</div></div><div class="metric"><div class="v">${S.seasonWins}-${S.seasonDraws}-${S.seasonLosses}</div><div class="k">胜平负</div></div><div class="metric"><div class="v ${f.net>=0?"up":"down"}">${f.net>=0?"+":""}${f.net}万</div><div class="k">预计月净额</div></div><div class="metric"><div class="v">${Math.round(S.coach.authority)}</div><div class="k">教练权威</div></div></div><div class="section-head"><h2>本月赛前会议</h2><span>老板看判断，教练定首发</span></div>${fixtures.length?fixtures.map(renderFixturePreview).join(""):'<div class="empty">本月没有正式比赛。</div>'}${dramaCards()}<div class="section-head"><h2>联赛前六</h2><span>后两名降级</span></div>${rankTable(table)}<div class="section-head" style="margin-top:10px"><h2>世界脉搏</h2><span onclick="switchTab('world')" style="cursor:pointer;color:var(--grass)">打开活联赛 →</span></div>${headlines.length?headlines.map(n=>`<div class="news-item ${n.kind}"><div class="news-date">S${n.season} · ${n.month}月</div><div class="news-main"><b>${esc(n.headline)}</b><span>${esc(n.detail)}</span></div></div>`).join(""):'<div class="card"><div class="copy">联赛新闻将在本月比赛结算后开始滚动。</div></div>'}<div class="card"><div class="row"><div><h3>两套期待</h3><div class="copy">董事会要求前${S.targets.boardRank}并至少打进杯赛${S.targets.boardCup===1?"八强":"半决赛"}；球迷期待前${S.targets.fanRank}、至少${S.targets.fanWins}场联赛胜利。</div></div></div></div><div class="section-head" style="margin-top:10px"><h2>三年蓝图</h2><span>排名只看联赛</span></div><div class="metric-grid" style="grid-template-columns:repeat(3,1fr)">${targetBoard(S).seasons.map(c=>`<div class="metric" style="${c.season===S.season?"":"opacity:.5"}"><div class="v">前${c.boardRank}</div><div class="k">S${c.season}${c.done===true?" ✓":c.done===false?" ✗":""}</div></div>`).join("")}</div><div class="card"><div class="copy">${esc(targetBoard(S).progress)}</div></div><div class="section-head" style="margin-top:10px"><h2>你可以这样被记住</h2><span>开局选一条冲</span></div><div class="honour-shelf">${endingRoutes().map(r=>`<div class="honour"><b>◆ ${esc(r.title)}</b><span>${esc(r.desc)}</span></div>`).join("")}</div>`}
-function playerCard(p,context="squad"){enrichTransferPlayer(p,S);const status=p.injury>0?`伤${p.injury}月`:p.suspended>0?"停赛":p.listed?"已挂牌":"可用",short=S.shortlist?.includes(p.id),cls=`${p.injury>0?"injured":p.listed?"listed":""} ${short?"shortlisted":""}`,report=scoutRanges(p),market=context==="market",abilityText=market?(p.scoutLevel>=3?Math.round(p.ability):p.scoutLevel>=1?`≈${Math.round((Number(report.ability.split("-")[0])+Number(report.ability.split("-")[1]))/2)}`:"?"):Math.round(p.ability),pot=market?report.potential:Math.round(p.potential),fit=playerStyleFit(p,S.coach.style),impact=market&&p.scoutLevel>=2?estimateTransferImpact(S,p):null,promise=p.promise?.status==="active"?`<span class="pill promise-pill">承诺：${p.promise.text}</span>`:"";let buttons="";if(context==="squad")buttons=`<button class="small" onclick="renewPlayer('${p.id}')">续约</button><button class="small" onclick="toggleList('${p.id}')">${p.listed?"撤下挂牌":"挂牌出售"}</button><button class="small danger" onclick="releasePlayer('${p.id}')">协商解约</button>`;if(market)buttons=`${p.scoutLevel<3?`<button class="small" onclick="scoutPlayer('${p.id}')">定向考察</button>`:""}<button class="small" onclick="toggleShortlist('${p.id}')">${short?"移出候选":"加入候选"}</button><button class="small primary" onclick="openBid('${p.id}')" ${!inTransferWindow(S)?"disabled":""}>提交报价</button>`;if(context==="youth")buttons=`<button class="small primary" onclick="promoteYouth('${p.id}')">提拔一线队</button><button class="small danger" onclick="releaseYouth('${p.id}')">离开青训</button>`;return `<div class="card ${cls}"><div class="player-head"><div class="ability ${p.scoutLevel>=3&&p.ability>=72?"star":p.scoutLevel>=3&&p.ability<52?"low":""}">${abilityText}</div><div class="player-main"><div class="row"><div><span class="pos">${p.pos}</span><h3>${esc(p.name)}</h3>${market?`<span class="pill blue">${report.confidence}</span>`:`<span class="pill ${p.injury?"red":p.listed?"gold":"blue"}">${status}</span>`}${promise}</div><div class="number">${market?"估值":"身价"} <b>${market&&p.scoutLevel<2?`${Math.round(p.value*.75/10)*10}-${Math.round(p.value*1.3/10)*10}万`:`${Math.round(p.value)}万`}</b></div></div><div class="attrs"><span class="attr">${POS[p.pos]}</span><span class="attr">${p.age}岁</span><span class="attr">${market?`能力 ${report.ability}`:`角色 ${ROLE_LABELS[p.role]}`}</span><span class="attr">潜力 ${pot}</span>${market&&p.scoutLevel>=1?`<span class="attr">${ROLE_LABELS[p.role]}</span>`:""}${!market?`<span class="attr">状态 ${Math.round(p.form)}</span><span class="attr">士气 ${Math.round(p.morale)}</span>`:""}</div>${market?`<div class="scout-meter">${[1,2,3].map(i=>`<i class="${p.scoutLevel>=i?"on":""}"></i>`).join("")}</div><div class="transfer-fit"><span class="factor-chip ${p.scoutLevel>=2?edgeTone(fit,.5):"even"}">${p.scoutLevel>=2?`战术适配 ${signed(fit,0)}`:"适配待查"}</span><span class="factor-chip">${impact===null?"阵容影响待查":`预计提升 ${signed(impact)}`}</span>${p.rivalBid?`<span class="factor-chip bad">${esc(p.rivalBid.club)}已报价</span>`:p.scoutLevel>=2&&p.rivalClubs.length?`<span class="factor-chip bad">${p.rivalClubs.length}家关注</span>`:""}</div><div class="copy">${esc(p.origin)} · 要价${p.ask}万 · 薪资预期${report.wage}${p.scoutLevel>=2?` · 经纪人${esc(p.agent)}`:""}</div>`:`<div class="copy">月薪${p.wage}万 · 合同${p.contract}月 · ${ROLE_LABELS[p.role]} · ${personaLabel(p)}${S.room&&S.room.captainId===p.id?" · 队长":""}</div>`}<div class="card-actions">${buttons}</div></div></div></div>`}
+function playerCard(p,context="squad"){enrichTransferPlayer(p,S);const status=p.injury>0?`伤${p.injury}月`:p.suspended>0?"停赛":p.listed?"已挂牌":"可用",short=S.shortlist?.includes(p.id),cls=`${p.injury>0?"injured":p.listed?"listed":""} ${short?"shortlisted":""}`,report=scoutRanges(p),market=context==="market",abilityText=market?(p.scoutLevel>=3?Math.round(p.ability):p.scoutLevel>=1?`≈${Math.round((Number(report.ability.split("-")[0])+Number(report.ability.split("-")[1]))/2)}`:"?"):Math.round(p.ability),pot=market?report.potential:Math.round(p.potential),fit=playerStyleFit(p,S.coach.style),impact=market&&p.scoutLevel>=2?estimateTransferImpact(S,p):null,promise=p.promise?.status==="active"?`<span class="pill promise-pill">承诺：${p.promise.text}</span>`:"";let buttons="";if(context==="squad")buttons=`<button class="small" onclick="renewPlayer('${p.id}')">续约</button><button class="small" onclick="toggleList('${p.id}')">${p.listed?`撤下挂牌(${listedPrice(p)}万)`:"挂牌出售"}</button><button class="small" onclick="shopAround('${p.id}')" ${!inTransferWindow(S)?"disabled":""}>推销一圈</button><button class="small danger" onclick="releasePlayer('${p.id}')">协商解约</button>`;if(market)buttons=`${p.scoutLevel<3?`<button class="small" onclick="scoutPlayer('${p.id}')">定向考察</button>`:""}<button class="small" onclick="toggleShortlist('${p.id}')">${short?"移出候选":"加入候选"}</button><button class="small primary" onclick="openBid('${p.id}')" ${!inTransferWindow(S)?"disabled":""}>提交报价</button>`;if(context==="youth")buttons=`<button class="small primary" onclick="promoteYouth('${p.id}')">提拔一线队</button><button class="small danger" onclick="releaseYouth('${p.id}')">离开青训</button>`;return `<div class="card ${cls}"><div class="player-head"><div class="ability ${p.scoutLevel>=3&&p.ability>=72?"star":p.scoutLevel>=3&&p.ability<52?"low":""}">${abilityText}</div><div class="player-main"><div class="row"><div><span class="pos">${p.pos}</span>${p.foreign?'<span class="pill blue">外援</span> ':""}<h3>${esc(p.name)}</h3>${market?`<span class="pill blue">${report.confidence}</span>`:`<span class="pill ${p.injury?"red":p.listed?"gold":"blue"}">${status}</span>`}${promise}</div><div class="number">${market?"估值":"身价"} <b>${market&&p.scoutLevel<2?`${Math.round(p.value*.75/10)*10}-${Math.round(p.value*1.3/10)*10}万`:`${Math.round(p.value)}万`}</b></div></div><div class="attrs"><span class="attr">${POS[p.pos]}</span><span class="attr">${p.age}岁</span><span class="attr">${market?`能力 ${report.ability}`:`角色 ${ROLE_LABELS[p.role]}`}</span><span class="attr">潜力 ${pot}</span>${market&&p.scoutLevel>=1?`<span class="attr">${ROLE_LABELS[p.role]}</span>`:""}${!market?`<span class="attr">状态 ${Math.round(p.form)}</span><span class="attr">士气 ${Math.round(p.morale)}</span>`:""}</div>${market?`<div class="scout-meter">${[1,2,3].map(i=>`<i class="${p.scoutLevel>=i?"on":""}"></i>`).join("")}</div><div class="transfer-fit"><span class="factor-chip ${p.scoutLevel>=2?edgeTone(fit,.5):"even"}">${p.scoutLevel>=2?`战术适配 ${signed(fit,0)}`:"适配待查"}</span><span class="factor-chip">${impact===null?"阵容影响待查":`预计提升 ${signed(impact)}`}</span>${p.rivalBid?`<span class="factor-chip bad">${esc(p.rivalBid.club)}已报价</span>`:p.scoutLevel>=2&&p.rivalClubs.length?`<span class="factor-chip bad">${p.rivalClubs.length}家关注</span>`:""}</div><div class="copy">${esc(p.origin)} · 要价${p.ask}万 · 薪资预期${report.wage}${p.scoutLevel>=2?` · 经纪人${esc(p.agent)}`:""}</div>`:`<div class="copy">月薪${p.wage}万 · 合同${p.contract}月 · ${ROLE_LABELS[p.role]} · ${personaLabel(p)}${S.room&&S.room.captainId===p.id?" · 队长":""}</div>`}<div class="card-actions">${buttons}</div></div></div></div>`}
 function renderSquad(){const filters=["all","GK","DEF","MID","FWD"],order=["GK","DEF","MID","FWD"],rows=S.roster.filter(p=>S.squadFilter==="all"||p.pos===S.squadFilter).sort((a,b)=>order.indexOf(a.pos)-order.indexOf(b.pos)||b.ability-a.ability),xi=selectLineup(S);$("#panel").innerHTML=`<div class="metric-grid"><div class="metric"><div class="v">${S.roster.length}</div><div class="k">一线队人数</div></div><div class="metric"><div class="v">${xi.length}/11</div><div class="k">可用首发</div></div><div class="metric"><div class="v">${round(payroll(S),0)}万</div><div class="k">月工资</div></div><div class="metric"><div class="v">${S.roster.filter(p=>p.contract<=6).length}</div><div class="k">半年内到期</div></div></div><div class="subnav">${filters.map(k=>`<button class="${S.squadFilter===k?"on":""}" onclick="setSquadFilter('${k}')">${k==="all"?"全部":POS[k]}</button>`).join("")}</div>${rows.map(p=>playerCard(p)).join("")}`}
 function renderTransfer(){ensureTransferState(S);const filters=["all","shortlist","GK","DEF","MID","FWD"],needs=squadDiagnosis(S),rows=S.market.filter(p=>S.marketFilter==="all"||(S.marketFilter==="shortlist"?S.shortlist.includes(p.id):p.pos===S.marketFilter)).sort((a,b)=>(S.shortlist.includes(b.id)?8:0)-(S.shortlist.includes(a.id)?8:0)+b.scoutLevel-a.scoutLevel||b.ability-a.ability),deadline=[2,6].includes(S.seasonMonth);$("#panel").innerHTML=`${deadline?`<div class="deadline-banner"><b>转会截止月</b><div class="copy">本月结束后窗口关闭。候选名单${S.shortlist.length}人，存在竞争报价的目标${S.market.filter(p=>p.rivalBid).length}人。</div></div>`:""}<div class="section-head"><h2>阵容诊断</h2><span>赛后问题要在这里找到解决方案</span></div><div class="diagnosis-grid">${needs.map((n,i)=>`<div class="card need-card ${n.score>=5?"high":n.score>=3?"medium":""}"><div class="row"><div><h3>${POS[n.pos]}</h3><div class="copy">${esc(n.reason)}</div></div><div class="need-score">${n.score>=5?"紧急":n.score>=3?"关注":"健康"}</div></div><div class="factor-strip"><span class="factor-chip">可用${n.count}人</span><span class="factor-chip">主力${n.avg}</span><span class="factor-chip">建议≥${n.recommended}</span></div></div>`).join("")}</div><div class="section-head" style="margin-top:10px"><h2>转会中心</h2><span>${inTransferWindow(S)?"窗口开放，可以完成注册":"窗口关闭，只能考察"}</span></div>${S.incomingOffers.length?`<div class="section-head"><h2>收到的报价</h2><span>${S.incomingOffers.length}份待处理</span></div>${S.incomingOffers.map(o=>{const p=S.roster.find(x=>x.id===o.playerId);return p?`<div class="card offer"><div class="row"><div><h3>${esc(o.club)}报价${esc(p.name)}</h3><div class="copy">报价${o.fee}万，球员身价${p.value}万。</div></div><span class="pill green">${o.fee}万</span></div><div class="card-actions"><button class="small primary" onclick="acceptSale('${o.id}')">接受</button><button class="small" onclick="rejectSale('${o.id}')">拒绝</button></div></div>`:""}).join("")}`:""}<div class="subnav">${filters.map(k=>`<button class="${S.marketFilter===k?"on":""}" onclick="setMarketFilter('${k}')">${k==="all"?"全部":k==="shortlist"?`候选 ${S.shortlist.length}`:POS[k]}</button>`).join("")}</div>${rows.length?rows.map(p=>playerCard(p,"market")).join(""):'<div class="empty">当前筛选下没有球员。</div>'}`}
 function renderYouth(){const nextCost=S.academyLevel<5?[0,600,1050,1650,2500][S.academyLevel]:0;$("#panel").innerHTML=`<div class="metric-grid"><div class="metric"><div class="v">${S.academyLevel}/5</div><div class="k">青训等级</div></div><div class="metric"><div class="v">${S.youth.length}</div><div class="k">梯队球员</div></div><div class="metric"><div class="v">${Math.round(S.coach.youth)}</div><div class="k">教练育人</div></div><div class="metric"><div class="v">${S.seasonYouth}</div><div class="k">本季提拔</div></div></div><div class="card"><div class="row"><div><h3>青训学院</h3><div class="copy">每个新赛季新增5名学员。等级越高，初始能力和潜力越好。</div></div><span class="level">${"■".repeat(S.academyLevel)}${"□".repeat(5-S.academyLevel)}</span></div>${S.academyLevel<5?`<div class="card-actions"><button class="small primary" onclick="upgradeAcademy()" ${S.cash<nextCost?"disabled":""}>升级 ${nextCost}万</button></div>`:""}</div>${S.youth.slice().sort((a,b)=>b.potential-a.potential).map(p=>playerCard(p,"youth")).join("")}`}
 function coachCard(c,current=false){return `<div class="card ${current?"offer":""}"><div class="row"><div><h3>${esc(c.name)}</h3><span class="pill ${current?"green":"blue"}">${STYLES[c.style]}</span></div><div class="number">月薪 <b>${c.salary}万</b></div></div><div class="attrs"><span class="attr">训练 ${c.coaching}</span><span class="attr">战术 ${c.tactical}</span><span class="attr">青训 ${c.youth}</span><span class="attr">纪律 ${c.discipline}</span><span class="attr">声望 ${c.reputation}</span></div><div class="copy">${current?`权威${Math.round(c.authority)} · 执教${c.months}个月`:`签约补偿${c.fee}万`}</div>${current?"":`<div class="card-actions"><button class="small primary" onclick="hireCoach('${c.id}')">聘请</button></div>`}</div>`}
 function renderCoach(){const compensation=Math.round(S.coach.salary*5);$("#panel").innerHTML=`<div class="section-head"><h2>现任主教练</h2><span>老板不能直接安排首发</span></div>${coachCard(S.coach,true)}<div class="card"><div class="copy">解雇现任教练需支付约${compensation}万补偿。新教练会改变战术风格和选人倾向，也会重新建立更衣室权威。</div><div class="card-actions"><button class="small danger" onclick="fireCoach()">解雇主教练</button></div></div><div class="section-head"><h2>候选教练</h2><span>候选名单每月刷新</span></div>${S.coachCandidates.map(c=>coachCard(c)).join("")}`}
 function sponsorCard(slot,sp){if(sp)return `<div class="card"><div class="row"><div><span class="type">${SPONSOR_SLOTS[slot]}</span><h3>${esc(sp.name)}</h3></div><div class="number">每月 <b>${sp.monthly}万</b></div></div><div class="copy">要求：${sp.requirement}；未完成赔付${sp.penalty}万。剩余${sp.months}个月。</div></div>`;return `<div class="card"><div class="row"><div><span class="type">${SPONSOR_SLOTS[slot]}</span><h3>当前空缺</h3></div></div><div class="copy">没有合同，就没有收入，也没有人催你交作业。</div></div>`}
-function renderBusiness(){const projects=Object.entries(S.facilityProjects);$("#panel").innerHTML=`<div class="section-head"><h2>赞助合同</h2><span>三个独立广告位</span></div>${Object.entries(SPONSOR_SLOTS).map(([slot])=>sponsorCard(slot,S.sponsors[slot])+`<div class="subnav">${(S.sponsorOffers[slot]||[]).map(o=>`<button onclick="signSponsor('${slot}','${o.id}')">${esc(o.name)} ${o.monthly}万/月</button>`).join("")}</div>`).join("")}<div class="section-head"><h2>球场工程</h2><span>${projects.length?"工程进行中":"没有在建项目"}</span></div>${Object.entries(FACILITIES).map(([k,f])=>{const lv=S.stadium[k],project=S.facilityProjects.find(x=>x.key===k),cost=lv<5?f.cost[lv]:0;return `<div class="card"><div class="facility-line"><div><h3>${f.name}</h3><div class="copy">${f.desc}</div></div><span class="level">${"■".repeat(lv)}${"□".repeat(5-lv)}</span></div>${project?`<div class="copy gold">施工中，还需${project.months}个月</div><div class="bar"><i style="width:${project.months===1?"70":"35"}%"></i></div>`:lv<5?`<div class="card-actions"><button class="small primary" onclick="upgradeFacility('${k}')" ${S.cash<cost?"disabled":""}>升级 ${cost}万</button></div>`:'<div class="copy gold">已达到最高等级</div>'}</div>`}).join("")}<div class="card"><div class="row"><div><h3>债务管理</h3><div class="copy">当前债务${Math.round(S.debt)}万，每月利息约${Math.round(S.debt*.007)}万。</div></div></div><div class="card-actions"><button class="small" onclick="repayDebt(500)" ${S.cash<700||S.debt<=0?"disabled":""}>偿还500万</button><button class="small" onclick="borrowMoney()">追加贷款</button></div></div>`}
+function nameListCard(){const cur=customNames.join("\n");
+ return `<div class="section-head" style="margin-top:10px"><h2>自定义球员名单</h2><span>只存在你这台设备上</span></div>`+
+  `<div class="card"><div class="copy">游戏自带的球员、教练、经纪人、记者全部是虚构角色。想换成你自己那份名单，一行一个名字粘进来即可——会先发给一线队，然后是青训和转会市场，多出来的留给以后新生成的球员。</div>`+
+  `<div class="field" style="margin-top:8px"><textarea id="nameListInput" rows="5" placeholder="一行一个名字&#10;也可以用逗号或顿号分隔" style="width:100%;background:#0e1611;border:1px solid var(--line);color:var(--text);padding:10px;border-radius:5px;resize:vertical">${esc(cur)}</textarea></div>`+
+  `<div class="card-actions"><button class="small primary" onclick="applyNameList()">应用到当前存档</button><button class="small" onclick="clearNameList()">清空，改回自动生成</button></div>`+
+  `<div class="copy">当前名单：${customNames.length?`${customNames.length} 个名字`:"空（使用自动生成）"}</div></div>`}
+function applyNameList(){const el=$("#nameListInput");if(!el)return;const list=saveNameList(el.value),used=renameSquad(S);
+ gameLog(S,"",`更新了自定义名单：${list.length} 个名字，已发给 ${used} 名球员。`);
+ showModal("名单已应用",list.length?`${list.length} 个名字已保存到本机，其中 ${used} 个发给了现有球员。剩下的会在新球员出现时依次使用。`:"名单已清空，之后由游戏自动生成名字。",[{text:"回到经营"}]);renderAll()}
+function clearNameList(){saveNameList("");showModal("已改回自动生成","自定义名单已清空。现有球员的名字保持不变，新生成的球员会重新使用内置名字库。",[{text:"知道了"}]);renderAll()}
+function renderBusiness(){const projects=Object.entries(S.facilityProjects);$("#panel").innerHTML=`<div class="section-head"><h2>赞助合同</h2><span>三个独立广告位</span></div>${Object.entries(SPONSOR_SLOTS).map(([slot])=>sponsorCard(slot,S.sponsors[slot])+`<div class="subnav">${(S.sponsorOffers[slot]||[]).map(o=>`<button onclick="signSponsor('${slot}','${o.id}')">${esc(o.name)} ${o.monthly}万/月</button>`).join("")}</div>`).join("")}<div class="section-head"><h2>球场工程</h2><span>${projects.length?"工程进行中":"没有在建项目"}</span></div>${Object.entries(FACILITIES).map(([k,f])=>{const lv=S.stadium[k],project=S.facilityProjects.find(x=>x.key===k),cost=lv<5?f.cost[lv]:0;return `<div class="card"><div class="facility-line"><div><h3>${f.name}</h3><div class="copy">${f.desc}</div></div><span class="level">${"■".repeat(lv)}${"□".repeat(5-lv)}</span></div>${project?`<div class="copy gold">施工中，还需${project.months}个月</div><div class="bar"><i style="width:${project.months===1?"70":"35"}%"></i></div>`:lv<5?`<div class="card-actions"><button class="small primary" onclick="upgradeFacility('${k}')" ${S.cash<cost?"disabled":""}>升级 ${cost}万</button></div>`:'<div class="copy gold">已达到最高等级</div>'}</div>`}).join("")}<div class="card"><div class="row"><div><h3>债务管理</h3><div class="copy">当前债务${Math.round(S.debt)}万，每月利息约${Math.round(S.debt*.007)}万。</div></div></div><div class="card-actions"><button class="small" onclick="repayDebt(500)" ${S.cash<700||S.debt<=0?"disabled":""}>偿还500万</button><button class="small" onclick="borrowMoney()">追加贷款</button></div></div>${nameListCard()}`}
 function renderRelations(){const groups=["all","俱乐部","赞助商","公众","经纪人","同行"],rows=S.npcs.filter(n=>S.relationFilter==="all"||n.group===S.relationFilter);$("#panel").innerHTML=`<div class="subnav">${groups.map(g=>`<button class="${S.relationFilter===g?"on":""}" onclick="setRelationFilter('${g}')">${g==="all"?"全部":g}</button>`).join("")}</div>${rows.map(n=>`<div class="card"><div class="person-head"><div class="avatar">${esc(n.name[0])}</div><div class="person-main"><div class="row"><div><h3>${esc(n.name)}</h3><span class="pill blue">${n.group}</span></div><div class="number">好感 <b>${Math.round(n.fav)}</b></div></div><div class="meta">${esc(n.role)}</div><div class="copy">${n.trait}</div><div class="progress"><i style="width:${n.fav}%"></i></div><div class="card-actions"><button class="small" onclick="npcMenu('${n.id}')">安排会面</button></div></div></div></div>`).join("")}`}
 function rankTable(rows=sortedTable(S)){return `<table class="rank-table"><thead><tr><th>名次</th><th>俱乐部</th><th>赛</th><th>胜</th><th>平</th><th>负</th><th>净胜</th><th>分</th></tr></thead><tbody>${rows.map((c,i)=>`<tr class="${c.id==="me"?"me":i>=10?"drop":""}"><td>${sortedTable(S).findIndex(x=>x.id===c.id)+1}</td><td>${esc(c.name)}</td><td>${c.w+c.d+c.l}</td><td>${c.w}</td><td>${c.d}</td><td>${c.l}</td><td>${c.gf-c.ga}</td><td>${c.points}</td></tr>`).join("")}</tbody></table>`}
 function renderSchedule(){const upcoming=S.schedule.map((fs,i)=>({round:i+1,month:ROUND_MONTHS[i],f:fs.find(x=>x.home==="me"||x.away==="me")})).filter(x=>x.f).map(x=>{const opp=S.clubs.find(c=>c.id===(x.f.home==="me"?x.f.away:x.f.home)),played=x.f.played,report=S.matchHistory.find(m=>m.round===x.round&&m.season===S.season);return `<div class="card fixture ${report?(report.gf>report.ga?"win":report.gf<report.ga?"loss":"draw"):""}"><span class="when">第${x.round}轮<br>${x.month}月</span><span class="teams">${x.f.home==="me"?"主场":"客场"} vs ${esc(opp.name)}</span><span class="score">${played&&report?`${report.gf}-${report.ga}`:"待赛"}</span></div>`}).join("");$("#panel").innerHTML=`<div class="section-head"><h2>完整积分榜</h2><span>第${S.season}赛季</span></div>${rankTable()}<div class="section-head" style="margin-top:10px"><h2>联赛赛程</h2><span>主客场双循环22轮</span></div>${upcoming}`}
@@ -678,15 +940,141 @@ function setSquadFilter(v){S.squadFilter=v;renderAll()}function setMarketFilter(
 function toggleTip(el,e){const on=el.classList.contains("tip-on");document.querySelectorAll(".stat.tip-on").forEach(x=>x.classList.remove("tip-on"));if(!on)el.classList.add("tip-on");e.stopPropagation()}
 
 function offerPackages(p,fee){const rows=[{role:"rotation",text:"轮换球员",months:24,mult:1.04,signing:3,agent:2},{role:"core",text:"核心主力",months:36,mult:1.22,signing:5,agent:3}];if(p.age<=23)rows.unshift({role:"prospect",text:"重点培养",months:36,mult:.96,signing:2,agent:2});return rows.map(x=>{const wage=round(p.wage*x.mult,1),signing=Math.round(wage*x.signing),agentFee=Math.round(wage*x.agent),total=fee+signing+agentFee,roleBoost=x.role==="core"?.17:x.role==="rotation"?.04:(24-p.age)*.025;return{...x,wage,signing,agentFee,total,roleBoost}})}
-function openBid(id){if(!inTransferWindow(S)){showModal("转会窗尚未开放","可以继续考察和维护候选名单，但新球员只能在赛季第1、2、6月完成注册。",[{text:"知道了"}]);return}if(!needEnergy())return;ensureTransferState(S);const p=S.market.find(x=>x.id===id);if(!p)return;const director=S.npcs.find(n=>n.id==="director").fav,opts=[[.86,"试探报价"],[1,"按要价谈"],[1.16,"强势拿人"]],report=scoutRanges(p),rival=p.rivalBid?`\n${p.rivalBid.club}已提交${p.rivalBid.fee}万报价，卖方正在比较方案。`:p.rivalClubs.length?`\n球探认为另有${p.rivalClubs.length}家俱乐部关注。`:"";showModal(`向${p.origin}报价`,`${p.name}，${POS[p.pos]}，${report.confidence}。\n能力判断${report.ability}，角色${p.scoutLevel>=1?ROLE_LABELS[p.role]:"尚未确认"}。\n对方要价${p.ask}万。${p.scoutLevel<2?"\n报告不足，报价存在判断风险。":""}${rival}`,opts.map(([m,label])=>{const pressure=p.rivalBid?1.08:1,fee=Math.round(p.ask*m*pressure/10)*10;return eventOption(label,`${fee}万；预计俱乐部接受概率${fee>=p.ask*pressure?"较高":"偏低"}`,()=>clubNegotiation(p,fee,director),S.cash<fee)}))}
-function clubNegotiation(p,fee,directorFav){spend();const pressure=p.rivalBid?.fee?Math.max(0,(p.rivalBid.fee-fee)/p.ask):0,chance=clamp(.24+fee/p.ask*.5+(directorFav-50)/170+(p.origin===(rivalClub(S)||{}).name?relationPower("rival")*.15:0)-pressure*.45,.08,.96);if(Math.random()>chance){gameLog(S,"bad",`${p.origin}拒绝了对${p.name}的${fee}万报价。`);if(p.rivalBid)addLeagueNews(S,"transfer",`${p.rivalBid.club}领跑${p.name}争夺战`,`${S.clubName}的${fee}万报价未被接受。`);showModal("俱乐部拒绝报价",p.rivalBid?`对方正在比较${p.rivalBid.club}的方案，你的报价没有取得领先。`:"对方回复得很快：报价没有达到内部估值。",[{text:"本月还能再找别人"}]);return}const packages=offerPackages(p,fee);showModal("俱乐部同意谈判",`${p.origin}接受${fee}万报价。现在要与${p.agent}讨论工资、球队角色、签字费、经纪人佣金和解约金。`,packages.map(pkg=>eventOption(pkg.text,`月薪${pkg.wage}万 · ${pkg.months}月 · 签字费${pkg.signing}万 · 佣金${pkg.agentFee}万 · 首期总支出${pkg.total}万`,()=>playerNegotiation(p,fee,pkg),S.cash<pkg.total)))}
-function playerNegotiation(p,fee,pkg){const agentBoost=Math.max(...S.npcs.filter(n=>n.group==="经纪人").map(n=>n.fav))-50,fit=playerStyleFit(p,S.coach.style),rankAppeal=(13-leagueRank(S))/12,competition=p.rivalBid?-.1:0,ambitionPressure=(p.ambition-60)/240,chance=clamp(.3+(pkg.wage/p.wage-1)*.9+(pkg.months-18)/100+(p.willing-50)/130+agentBoost/280+pkg.roleBoost+fit*.035+rankAppeal*.12+competition-ambitionPressure,.08,.96);if(Math.random()>chance){gameLog(S,"bad",`${p.name}拒绝了${pkg.text}合同。`);p.willing=clamp(p.willing-5);showModal("球员没有签字",`${p.agent}表示，球员对工资、${pkg.text}承诺、俱乐部排名或竞争报价仍有顾虑。俱乐部不会扣除转会费。`,[{text:"谈判结束"}]);return}const before=teamRating(S),oldOrigin=p.origin,release=Math.round(Math.max(p.value,fee)*1.65/10)*10;S.cash-=pkg.total;p.wage=pkg.wage;p.contract=pkg.months;p.origin="本队";p.scoutLevel=3;p.scouted=true;p.listed=false;p.signedMonth=S.globalMonth;p.releaseClause=release;p.promise={role:pkg.role,text:pkg.text,status:"active",startMonth:S.globalMonth,expires:S.globalMonth+4,baselineApps:p.apps||0};S.roster.push(p);S.market=S.market.filter(x=>x.id!==p.id);S.shortlist=S.shortlist.filter(x=>x!==p.id);S.track.bought++;S.track.transferSpend+=fee;S.reputation=clamp(S.reputation+(p.ability>=70?2:0));const impact=round(teamRating(S)-before,1),deal={season:S.season,month:S.seasonMonth,type:"in",player:p.name,pos:p.pos,fee,total:pkg.total,from:oldOrigin,to:S.clubName,role:pkg.text,impact};S.clubHistory.transfers.unshift(deal);S.worldTransfers.unshift({season:S.season,month:S.seasonMonth,player:p.name,pos:p.pos,rating:p.ability,fee,from:oldOrigin,to:S.clubName});addLeagueNews(S,"transfer",`${S.clubName}签下${p.name}`,`${fee}万转会费，承诺${pkg.text}；预计阵容评分${signed(impact)}。`,"me");if(fee>=1200||p.ability>=72)addMilestone(S,`重要引援：${p.name}`,`从${oldOrigin}以${fee}万加盟，签约时能力${p.ability}。`);archiveClubPlayer(S,p,"在队");gameLog(S,"good",`以${fee}万签下${p.name}，承诺${pkg.text}，首期总支出${pkg.total}万。`);showModal("签约完成",`${p.name}完成签字。\n\n阵容评分变化：${signed(impact)}\n战术适配：${fit>0?"适合":"需要磨合"}\n出场承诺：${pkg.text}，4个月后复核\n解约金：${release}万\n当前工资总额：${Math.round(payroll(S))}万/月。`,[{text:"看看新阵容",fn:()=>switchTab("squad")}])}
-function toggleList(id){const p=S.roster.find(x=>x.id===id);if(!p)return;p.listed=!p.listed;p.morale=clamp(p.morale+(p.listed?-7:3));if(p.listed)risk(S,"dressing",2);gameLog(S,p.listed?"bad":"",`${p.name}${p.listed?"被列入出售名单":"撤下了出售名单"}。`);renderAll()}
+function openBid(id){
+ if(!inTransferWindow(S)){showModal("转会窗尚未开放","可以继续考察和维护候选名单，但新球员只能在赛季第1、2、6月完成注册。",[{text:"知道了"}]);return}
+ if(!needEnergy())return;ensureTransferState(S);
+ const p=S.market.find(x=>x.id===id);if(!p)return;
+ const report=scoutRanges(p),
+  rival=p.rivalBid?`\n${p.rivalBid.club}已经报了${p.rivalBid.fee}万，卖方在比较方案。`:p.rivalClubs.length?`\n球探认为另有${p.rivalClubs.length}家俱乐部在看他。`:"",
+  opts=[[.82,"试探报价"],[1,"按要价开"],[1.12,"一次到位"]];
+ showModal(`向${p.origin}报价 · ${p.name}`,
+  `${POS[p.pos]}，${report.confidence}。能力判断${report.ability}，角色${p.scoutLevel>=1?ROLE_LABELS[p.role]:"尚未确认"}。\n对方要价${p.ask}万。${p.scoutLevel<2?"\n报告不足，报价存在判断风险。":""}${rival}\n\n开价之后可以来回谈：加价、换付款方式、拍桌走人都算一轮。`,
+  opts.map(([m,label])=>{const fee=Math.round(p.ask*m/10)*10;
+   return eventOption(label,`${fee}万开局`,()=>{spend();S._deal=startDeal(S,p,fee);renderDealCard()})}));
+}
+
+function dealStateText(){
+ const d=S._deal,p=d.player,worth=offerWorth(S,p,d.fee,d.terms),cash=cashOutlay(S,p,d.fee,d.terms),gap=d.ask-worth;
+ return `第${d.round}轮 · 对方耐心 ${"●".repeat(Math.max(0,d.patience))}${"○".repeat(Math.max(0,3-d.patience))}\n`+
+  `对方要价 ${d.ask}万\n`+
+  `你的报价 ${d.fee}万 · ${termsSummary(S,d.terms)}\n`+
+  `卖方眼里值 ${worth}万${gap>0?`，还差 ${gap}万`:"，已经够了"}\n`+
+  `本月现金支出 ${cash}万（现有现金 ${Math.round(S.cash)}万）`+
+  (d.rivalFee?`\n${p.rivalBid.club}的报价 ${d.rivalFee}万`:"")+
+  (d.walked?"\n你已经晾过他一次，再走就真的散了。":"");
+}
+
+function renderDealCard(){
+ const d=S._deal;if(!d)return;const p=d.player,swaps=dealSwapCandidates(S,p),
+  swapIdx=swaps.findIndex(q=>q.id===d.terms.swapId),
+  nextSwap=swapIdx+1>=swaps.length?null:swaps[swapIdx+1],
+  cash=cashOutlay(S,p,d.fee,d.terms),
+  extraCycle=[[false,0],[true,0],[false,15],[true,15]],
+  curExtra=extraCycle.findIndex(([g,so])=>g===d.terms.goalBonus&&so===d.terms.sellOn),
+  nextExtra=extraCycle[(curExtra+1)%extraCycle.length],
+  extraLabel=(g,so)=>g&&so?`进球奖金 + 分成${so}%`:g?"进球奖金":so?`下家分成${so}%`:"无附加条款";
+ showModal(`谈判中 · ${p.name}`,dealStateText(),[
+  eventOption(`加价到 ${Math.round(d.fee*1.08/10)*10}万`,"每加一次都在烧你的现金",()=>{d.fee=Math.round(d.fee*1.08/10)*10;renderDealCard()}),
+  eventOption(`付款方式：${["一次性付清","分2期","分3期"][d.terms.installment]}　▸ 切换`,DEAL_TERMS.installment.note,()=>{d.terms.installment=(d.terms.installment+1)%3;renderDealCard()}),
+  eventOption(`附加条款：${extraLabel(d.terms.goalBonus,d.terms.sellOn)}　▸ 切换`,"当期少付，未来还账",()=>{d.terms.goalBonus=nextExtra[0];d.terms.sellOn=nextExtra[1];renderDealCard()}),
+  eventOption(d.terms.swapId?`交换：${esc((swaps[swapIdx]||{}).name||"")}　▸ 切换`:"球员交换：不换　▸ 切换",
+   swaps.length?`可换：${swaps.map(q=>q.name).join("、")}`:"没有合适的交换对象",
+   ()=>{d.terms.swapId=nextSwap?nextSwap.id:null;renderDealCard()},!swaps.length),
+  eventOption(`接受对方要价 ${d.ask}万`,"不再讨价还价，直接按他的数字来",()=>{d.fee=d.ask;submitDeal()}),
+  eventOption("提交这份报价",`现金支出 ${cash}万${S.cash<cash?"　现金不足":""}`,()=>submitDeal(),S.cash<cash),
+  eventOption(d.walked?"再走一次，谈崩就谈崩":"拍桌走人，晾他一手","有机会让他降价，也可能就此结束",()=>doWalkAway()),
+ ]);
+}
+
+function submitDeal(){
+ const d=S._deal;if(!d)return;const p=d.player,r=pushDeal(S,d);
+ if(r==="accept"){
+  const packages=offerPackages(p,d.fee);
+  showModal("俱乐部点头了",`${p.origin}接受 ${d.fee}万 · ${termsSummary(S,d.terms)}。\n\n现在轮到${p.agent}谈工资、角色、签字费和佣金。`,
+   packages.map(pkg=>{const total=cashOutlay(S,p,d.fee,d.terms)+pkg.signing+pkg.agentFee;
+    return eventOption(pkg.text,`月薪${pkg.wage}万 · ${pkg.months}月 · 签字费${pkg.signing}万 · 佣金${pkg.agentFee}万 · 当期共${total}万`,
+     ()=>playerNegotiation(p,d.fee,pkg,d.terms),S.cash<total)}));
+  return}
+ if(r==="collapse"){
+  gameLog(S,"bad",`与${p.origin}关于${p.name}的谈判破裂。`);
+  if(p.rivalBid)addLeagueNews(S,"transfer",`${p.rivalBid.club}领跑${p.name}争夺战`,`${S.clubName}谈了${d.round}轮没有谈成。`);
+  S._deal=null;
+  showModal("谈判破裂",`对方把电话挂了。${p.name}这个月不会再跟你谈。`,[{text:"再看看别人"}]);return}
+ gameLog(S,"",`${p.origin}还价 ${d.ask}万。`);
+ renderDealCard();
+}
+
+function doWalkAway(){
+ const d=S._deal;if(!d)return;const p=d.player,r=walkAway(S,d);
+ if(r==="return"){
+  showModal("他们回电话了",`晾了两天，${p.origin}把要价降到 ${d.ask}万。\n\n${dealStateText()}`,[eventOption("回到谈判桌","",()=>renderDealCard())]);
+  return}
+ gameLog(S,"bad",`你退出了${p.name}的谈判。`);
+ S._deal=null;
+ showModal("这笔交易结束了",`${p.origin}没有回头。${p.name}的名字从这个月的日程上划掉了。`,[{text:"知道了"}]);
+}
+
+function playerNegotiation(p,fee,pkg,terms){
+ terms=terms||emptyTerms();
+ const agentBoost=Math.max(...S.npcs.filter(n=>n.group==="经纪人").map(n=>n.fav))-50,fit=playerStyleFit(p,S.coach.style),rankAppeal=(13-leagueRank(S))/12,competition=p.rivalBid?-.1:0,ambitionPressure=(p.ambition-60)/240,
+  chance=clamp(.3+(pkg.wage/p.wage-1)*.9+(pkg.months-18)/100+(p.willing-50)/130+agentBoost/280+pkg.roleBoost+fit*.035+rankAppeal*.12+competition-ambitionPressure,.08,.96);
+ if(Math.random()>chance){gameLog(S,"bad",`${p.name}拒绝了${pkg.text}合同。`);p.willing=clamp(p.willing-5);S._deal=null;
+  showModal("球员没有签字",`${p.agent}表示，球员对工资、${pkg.text}承诺、俱乐部排名或竞争报价仍有顾虑。俱乐部不会扣除转会费。`,[{text:"谈判结束"}]);return}
+ const before=teamRating(S),oldOrigin=p.origin,release=Math.round(Math.max(p.value,fee)*1.65/10)*10,
+  cash=cashOutlay(S,p,fee,terms),total=cash+pkg.signing+pkg.agentFee;
+ S.cash-=total;
+ // 未来要还的账
+ if(terms.installment){const rest=fee-cash,perSeason=Math.round(rest/terms.installment);
+  for(let k=1;k<=terms.installment;k++)addLiability(S,{type:"installment",amount:perSeason,dueMonth:S.globalMonth+k*MONTHS_PER_SEASON,label:`${p.name}转会`});}
+ if(terms.goalBonus)addLiability(S,{type:"goalBonus",playerId:p.id,goals:(p.goals||0)+8,amount:Math.round(fee*.25),club:oldOrigin});
+ if(terms.sellOn)addLiability(S,{type:"sellOn",playerId:p.id,pct:terms.sellOn,club:oldOrigin});
+ if(terms.swapId){const q=S.roster.find(x=>x.id===terms.swapId);
+  if(q){archiveClubPlayer(S,q,`交换至${oldOrigin}`);roomShock(S,"sell",q);S.roster=S.roster.filter(x=>x.id!==q.id);S.track.sold++;
+   addLeagueNews(S,"transfer",`${q.name}作为交换加入${oldOrigin}`,`${S.clubName}用他抵掉了一部分${p.name}的转会费。`);}}
+ p.wage=pkg.wage;p.contract=pkg.months;p.origin="本队";p.scoutLevel=3;p.scouted=true;p.listed=false;p.signedMonth=S.globalMonth;p.releaseClause=release;
+ p.promise={role:pkg.role,text:pkg.text,status:"active",startMonth:S.globalMonth,expires:S.globalMonth+4,baselineApps:p.apps||0};
+ S.roster.push(p);S.market=S.market.filter(x=>x.id!==p.id);S.shortlist=S.shortlist.filter(x=>x!==p.id);
+ S.track.bought++;S.track.transferSpend+=fee;S.reputation=clamp(S.reputation+(p.ability>=70?2:0));
+ const impact=round(teamRating(S)-before,1);
+ S.clubHistory.transfers.unshift({season:S.season,month:S.seasonMonth,type:"in",player:p.name,pos:p.pos,fee,total,from:oldOrigin,to:S.clubName,role:pkg.text,impact,terms:termsSummary(S,terms)});
+ S.worldTransfers.unshift({season:S.season,month:S.seasonMonth,player:p.name,pos:p.pos,rating:p.ability,fee,from:oldOrigin,to:S.clubName});
+ addLeagueNews(S,"transfer",`${S.clubName}签下${p.name}`,`${fee}万转会费（${termsSummary(S,terms)}），承诺${pkg.text}；预计阵容评分${signed(impact)}。`,"me");
+ if(fee>=1200||p.ability>=72)addMilestone(S,`重要引援：${p.name}`,`从${oldOrigin}以${fee}万加盟，签约时能力${p.ability}。`);
+ archiveClubPlayer(S,p,"在队");S._deal=null;
+ gameLog(S,"good",`以${fee}万签下${p.name}（${termsSummary(S,terms)}），当期支出${total}万。`);
+ const led=ledgerSummary(S);
+ showModal("签约完成",`${p.name}完成签字。\n\n阵容评分变化：${signed(impact)}\n战术适配：${fit>0?"适合":"需要磨合"}\n出场承诺：${pkg.text}，4个月后复核\n解约金：${release}万\n当期支出：${total}万\n未来尾款：${led.owed}万${led.contingent?`，另有${led.contingent}万奖金条款待触发`:""}\n工资总额：${Math.round(payroll(S))}万/月。`,[{text:"看看新阵容",fn:()=>switchTab("squad")}])}
+function toggleList(id){const p=S.roster.find(x=>x.id===id);if(!p)return;
+ if(p.listed){p.listed=false;p.askPrice=null;p.morale=clamp(p.morale+3);gameLog(S,"",`${p.name}撤下了出售名单。`);renderAll();return}
+ showModal(`给${p.name}标个价`,`身价${p.value}万，能力${Math.round(p.ability)}，${p.age}岁，合同还剩${p.contract}个月。\n\n标价越低越好卖，也越伤他和更衣室的心。`,
+  [[.85,"清仓价"],[1.1,"市场价"],[1.5,"高价，不急着卖"]].map(([m,label])=>
+   eventOption(`${label} ${Math.round(p.value*m/10)*10}万`,m<=1?"很快会有人问，但他会觉得被贱卖":m<=1.2?"正常挂牌":"未必有人接",
+    ()=>{setListPrice(S,p,m);renderAll()})).concat([eventOption("再想想","",()=>{})]))}
+function shopAround(id){
+ if(!inTransferWindow(S)){showModal("转会窗关着","窗口开放的月份（第1、2、6月）才能推销球员。",[{text:"知道了"}]);return}
+ if(!needEnergy())return;const p=S.roster.find(x=>x.id===id);if(!p)return;
+ if(!p.listed)setListPrice(S,p,1.1);
+ spend();const offers=shopPlayer(S,p);
+ if(!offers.length){p.morale=clamp(p.morale-4);roomTension(S,5);gameLog(S,"bad",`把${p.name}推销了一圈，没人回话。`);
+  showModal("没有人回话",`标价${listedPrice(p)}万，问了一圈没有俱乐部接。他知道了这件事。`,[{text:"降价再试，或者留着他"}]);return}
+ S.bidBoard={playerId:p.id,offers};gameLog(S,"",`${p.name}收到${offers.length}份报价。`);renderBidBoard()}
+function renderBidBoard(){
+ const b=S.bidBoard;if(!b)return;const p=S.roster.find(x=>x.id===b.playerId);if(!p){S.bidBoard=null;return}
+ showModal(`${p.name} 的报价`,`标价${listedPrice(p)}万，身价${p.value}万。\n\n钱不是唯一的考量：他想去哪、你想不想让对手拿到他、以及这笔钱什么时候到账。`,
+  b.offers.map(o=>eventOption(`${o.club} ${o.fee}万${o.rival?"（宿敌）":""}`,
+   `${o.note} · 当期到账${o.cashNow}万 · 他的意愿${o.playerWilling}${o.rival?" · 卖给宿敌球迷会炸":""}`,
+   ()=>confirmBid(o.id))).concat([eventOption("都不卖","留着他，标价撤销",()=>{p.listed=false;p.askPrice=null;S.bidBoard=null;gameLog(S,"",`拒绝了${p.name}的全部报价。`);renderAll()})]))}
+function confirmBid(oid){
+ const b=S.bidBoard;if(!b)return;const o=b.offers.find(x=>x.id===oid),p=S.roster.find(x=>x.id===b.playerId);if(!o||!p)return;
+ const warn=o.rival?"\n\n他会穿上死敌的球衣。北看台不会原谅这件事。":o.playerWilling<35?"\n\n他本人并不想去。强卖会让更衣室记住。":"";
+ showModal("确认出售",`${o.club} 以 ${o.fee}万 买入 ${p.name}（${o.note}）。\n当期到账 ${o.cashNow}万。${warn}`,
+  [eventOption("成交",`现金+${o.cashNow}万`,()=>{if(o.playerWilling<35){roomTension(S,10);S.roster.forEach(q=>q.morale=clamp(q.morale-3))}
+    acceptBid(S,p,o);S.bidBoard=null;renderAll()}),eventOption("再看看别家","",()=>renderBidBoard())])}
 function generateIncomingOffers(s,rng=Math.random){if(!inTransferWindow(s))return[];const rows=[];s.roster.filter(p=>p.listed||rng()<.035).forEach(p=>{if(rng()<.48){const club=pick(s.clubs.filter(c=>c.id!=="me"),rng),mult=p.listed?rand(.78,1.08,rng):rand(1,1.32,rng);rows.push({id:`offer_${s.globalMonth}_${Math.floor(rng()*1e8)}`,playerId:p.id,club:club.name,fee:Math.round(p.value*mult/10)*10})}});return rows.slice(0,5)}
 function processMarketCompetition(s,rng=Math.random){ensureTransferState(s,rng);if(!inTransferWindow(s))return[];const events=[];s.market.slice().forEach(p=>{if(!p.rivalClubs.length)return;if(!p.rivalBid&&rng()<.28){const club=pick(p.rivalClubs,rng),fee=Math.round(p.ask*rand(.88,1.12,rng)/10)*10;p.rivalBid={club,fee,month:s.globalMonth};const text=`${club}向${p.origin}报价${fee}万争夺${p.name}`;s.transferRumors.unshift({season:s.season,month:s.seasonMonth,playerId:p.id,text});addLeagueNews(s,"transfer",`${club}加入${p.name}争夺战`,`${fee}万报价已经送达，${s.shortlist.includes(p.id)?`${s.clubName}的候选目标面临竞争。`:"球员市场开始升温。"}`);events.push(text)}else if(p.rivalBid&&rng()<.16){const deal={season:s.season,month:s.seasonMonth,player:p.name,pos:p.pos,rating:p.ability,fee:p.rivalBid.fee,from:p.origin,to:p.rivalBid.club};s.worldTransfers.unshift(deal);addLeagueNews(s,"transfer",`${p.rivalBid.club}截胡${p.name}`,`${p.rivalBid.fee}万成交；${s.shortlist.includes(p.id)?`${s.clubName}失去一名候选目标。`:"转会正式完成。"}`);s.market=s.market.filter(x=>x.id!==p.id);s.shortlist=s.shortlist.filter(x=>x!==p.id);events.push(`${p.name}加盟${p.rivalBid.club}`)}});s.transferRumors=s.transferRumors.slice(0,40);return events}
 function evaluatePlayerPromises(s){ensureTransferState(s);const rows=[];s.roster.forEach(p=>{const pr=p.promise;if(!pr||pr.status!=="active"||s.globalMonth<pr.expires)return;const played=(p.apps||0)-(pr.baselineApps||0),target=pr.role==="core"?6:pr.role==="rotation"?3:1;if(played>=target){pr.status="kept";p.morale=clamp(p.morale+5);rows.push(`${p.name}的${pr.text}承诺已兑现（${played}次出场）`);gameLog(s,"good",`${p.name}认可俱乐部兑现了${pr.text}承诺。`)}else{pr.status="broken";p.morale=clamp(p.morale-16);p.listed=p.ambition>=65;risk(s,"dressing",9);rows.push(`${p.name}的${pr.text}承诺违约（仅${played}次出场）`);gameLog(s,"bad",`${p.name}认为${pr.text}承诺未兑现，更衣室风险上升。`)}});return rows}
 function showTransferDeadlineReport(events=[]){const needs=squadDiagnosis(S).slice(0,2),signed=S.clubHistory.transfers.filter(x=>x.season===S.season&&x.month===S.seasonMonth&&x.type==="in"),sold=S.clubHistory.transfers.filter(x=>x.season===S.season&&x.month===S.seasonMonth&&x.type==="out");showModal("转会窗关闭",`本窗口最后一个月已经结算。\n\n签入：${signed.length?`${signed.length}人，支出${signed.reduce((a,x)=>a+x.fee,0)}万`:"无人"}\n出售：${sold.length?`${sold.length}人，收入${sold.reduce((a,x)=>a+x.fee,0)}万`:"无人"}\n竞争动态：${events.length?events.join("；"):"没有候选目标被截胡"}\n剩余主要短板：${needs.map(n=>`${POS[n.pos]}（${n.reason}）`).join("；")}。\n\n候选名单和球探报告会保留到下一窗口。`,[{text:"接受窗口结果"}])}
-function acceptSale(id){const o=S.incomingOffers.find(x=>x.id===id),p=o&&S.roster.find(x=>x.id===o.playerId);if(!o||!p)return;showModal("确认出售",`${o.club}愿意支付${o.fee}万购买${p.name}。出售后无法撤回。`,[eventOption("接受报价",`现金+${o.fee}万`,()=>{ensureTransferState(S);archiveClubPlayer(S,p,`转会至${o.club}`);S.clubHistory.transfers.unshift({season:S.season,month:S.seasonMonth,type:"out",player:p.name,pos:p.pos,fee:o.fee,from:S.clubName,to:o.club,apps:p.apps,goals:p.goals});S.worldTransfers.unshift({season:S.season,month:S.seasonMonth,player:p.name,pos:p.pos,rating:p.ability,fee:o.fee,from:S.clubName,to:o.club});addLeagueNews(S,"transfer",`${o.club}签下${p.name}`,`${S.clubName}收到${o.fee}万，球员留下${p.apps}场${p.goals}球。`);S.cash+=o.fee;roomShock(S,"sell",p);S.roster=S.roster.filter(x=>x.id!==p.id);S.incomingOffers=S.incomingOffers.filter(x=>x.playerId!==p.id);S.track.sold++;S.track.transferIncome+=o.fee;if(p.ability>=70){S.fans=clamp(S.fans-4);risk(S,"fans",6)}gameLog(S,"good",`以${o.fee}万将${p.name}出售给${o.club}。`);renderAll()}),eventOption("暂不出售","",()=>{})])}
+function acceptSale(id){const o=S.incomingOffers.find(x=>x.id===id),p=o&&S.roster.find(x=>x.id===o.playerId);if(!o||!p)return;showModal("确认出售",`${o.club}愿意支付${o.fee}万购买${p.name}。出售后无法撤回。`,[eventOption("接受报价",`现金+${o.fee}万`,()=>{ensureTransferState(S);archiveClubPlayer(S,p,`转会至${o.club}`);S.clubHistory.transfers.unshift({season:S.season,month:S.seasonMonth,type:"out",player:p.name,pos:p.pos,fee:o.fee,from:S.clubName,to:o.club,apps:p.apps,goals:p.goals});S.worldTransfers.unshift({season:S.season,month:S.seasonMonth,player:p.name,pos:p.pos,rating:p.ability,fee:o.fee,from:S.clubName,to:o.club});addLeagueNews(S,"transfer",`${o.club}签下${p.name}`,`${S.clubName}收到${o.fee}万，球员留下${p.apps}场${p.goals}球。`);S.cash+=o.fee-sellOnDue(S,p,o.fee);roomShock(S,"sell",p);S.roster=S.roster.filter(x=>x.id!==p.id);S.incomingOffers=S.incomingOffers.filter(x=>x.playerId!==p.id);S.track.sold++;S.track.transferIncome+=o.fee;if(p.ability>=70){S.fans=clamp(S.fans-4);risk(S,"fans",6)}gameLog(S,"good",`以${o.fee}万将${p.name}出售给${o.club}。`);renderAll()}),eventOption("暂不出售","",()=>{})])}
 function rejectSale(id){const o=S.incomingOffers.find(x=>x.id===id);if(!o)return;S.incomingOffers=S.incomingOffers.filter(x=>x.id!==id);const p=S.roster.find(x=>x.id===o.playerId);if(p)p.morale=clamp(p.morale+(p.listed?-2:2));gameLog(S,"",`拒绝了${o.club}的报价。`);renderAll()}
 function renewPlayer(id){if(!needEnergy())return;const p=S.roster.find(x=>x.id===id);if(!p)return;showModal(`与${p.name}续约`,`当前月薪${p.wage}万，合同剩余${p.contract}个月。`,[[12,1.08],[24,1.18],[36,1.28]].map(([m,w])=>eventOption(`续约${m}个月`, `新月薪${round(p.wage*w,1)}万`,()=>{spend();const chance=clamp(.78+(w-1)*.5+p.morale/350-(p.ability>=72?.12:0),.35,.96);if(Math.random()<chance){p.wage=round(p.wage*w,1);p.contract=m;p.morale=clamp(p.morale+6);gameLog(S,"good",`与${p.name}续约${m}个月。`);showModal("续约完成","经纪人收起合同，球员第二天照常参加训练。",[{text:"完成"}])}else{p.morale=clamp(p.morale-5);risk(S,"dressing",4);showModal("续约没有谈妥","球员希望获得更高工资或更明确的地位。",[{text:"以后再谈"}])}})))}
 function releasePlayer(id){const p=S.roster.find(x=>x.id===id);if(!p)return;const cost=Math.round(p.wage*Math.min(p.contract,10)*.45);showModal("协商解约",`提前终止${p.name}的合同需支付约${cost}万。更衣室会注意你怎样处理离队球员。`,[eventOption("支付补偿并解约",`现金-${cost}万`,()=>{archiveClubPlayer(S,p,"协商解约离队");S.cash-=cost;roomShock(S,"release",p);S.roster=S.roster.filter(x=>x.id!==id);risk(S,"dressing",5);gameLog(S,"bad",`支付${cost}万与${p.name}提前解约。`);renderAll()},S.cash<cost),eventOption("取消","",()=>{})])}
@@ -747,7 +1135,7 @@ function disasterCheck(){if(S.cash<-1500||S.risks.finance>=112)return["俱乐部
 
 function processFacilities(s){s.facilityProjects.forEach(p=>p.months--);const done=s.facilityProjects.filter(p=>p.months<=0);done.forEach(p=>{s.stadium[p.key]=clamp(s.stadium[p.key]+1,1,5);s.track.facilityUpgrades++;gameLog(s,"good",`${FACILITIES[p.key].name}升级完成，达到${s.stadium[p.key]}级。`)});s.facilityProjects=s.facilityProjects.filter(p=>p.months>0)}
 function developPlayers(s,rng=Math.random){s.roster.forEach(p=>{p.injury=Math.max(0,p.injury-1);p.suspended=Math.max(0,p.suspended-1);p.contract--;if(p.age<=23&&rng()<.12+s.coach.youth/700)p.ability=Math.min(p.potential,p.ability+1);if(p.age>=32&&rng()<.12)p.ability=Math.max(40,p.ability-1);p.value=valueFor(p)});s.youth.forEach(p=>{p.contract--;const chance=.22+s.academyLevel*.055+s.coach.youth/500;if(rng()<chance)p.ability=Math.min(p.potential,p.ability+1);p.form=clamp(p.form+rand(-2,3,rng))});const expired=s.roster.filter(p=>p.contract<=0);expired.forEach(p=>{archiveClubPlayer(s,p,"合同到期离队");gameLog(s,"bad",`${p.name}合同到期，以自由球员身份离队。`);risk(s,"dressing",3)});s.roster=s.roster.filter(p=>p.contract>0);s.youth=s.youth.filter(p=>p.contract>0)}
-function settleFinance(s){const before={cash:s.cash,fans:s.fans,board:s.board,rating:teamRating(s),rank:leagueRank(s)},f=projectedFinance(s);s.cash+=f.net;s.track.sponsorIncome+=f.sponsor;s.track.gateIncome+=f.gate;Object.values(s.sponsors).filter(Boolean).forEach(sp=>sp.months--);if(f.net<0)risk(s,"finance",Math.min(8,Math.abs(f.net)/160));else risk(s,"finance",-2);if(payroll(s)>s.wageBudget){risk(s,"finance",5);s.board=clamp(s.board-1)}if(s.cash<0)risk(s,"finance",8);if(s.stadium.safety<=2)risk(s,"safety",2);if(s.coach.authority<35)risk(s,"dressing",5);processFacilities(s);developPlayers(s);s.coach.months++;s.track.maxCash=Math.max(s.track.maxCash,s.cash);s.track.maxFans=Math.max(s.track.maxFans,s.fans);s.last={...f};s.lastDelta={cash:s.cash-before.cash,fans:s.fans-before.fans,board:s.board-before.board,rating:teamRating(s)-before.rating,rank:before.rank-leagueRank(s)};return f}
+function settleFinance(s){const before={cash:s.cash,fans:s.fans,board:s.board,rating:teamRating(s),rank:leagueRank(s)},f=projectedFinance(s);s.cash+=f.net;s.track.sponsorIncome+=f.sponsor;s.track.gateIncome+=f.gate;Object.values(s.sponsors).filter(Boolean).forEach(sp=>sp.months--);if(f.net<0)risk(s,"finance",Math.min(8,Math.abs(f.net)/160));else risk(s,"finance",-2);if(payroll(s)>s.wageBudget){risk(s,"finance",5);s.board=clamp(s.board-1)}if(s.cash<0)risk(s,"finance",8);if(s.stadium.safety<=2)risk(s,"safety",2);if(s.coach.authority<35)risk(s,"dressing",5);settleLedger(s);checkGoalBonuses(s);processFacilities(s);developPlayers(s);s.coach.months++;s.track.maxCash=Math.max(s.track.maxCash,s.cash);s.track.maxFans=Math.max(s.track.maxFans,s.fans);s.last={...f};s.lastDelta={cash:s.cash-before.cash,fans:s.fans-before.fans,board:s.board-before.board,rating:teamRating(s)-before.rating,rank:before.rank-leagueRank(s)};return f}
 function showMatchCentre(r,index,total){const pre=r.preview,reg=r.regulation||{gf:r.gf,ga:r.ga};$("#modalTitle").textContent=`比赛中心 ${index}/${total} · ${r.competition}`;const body=$("#modalBody");body.innerHTML=`<div class="match-scoreboard"><div class="match-side">${esc(r.home?S.clubName:r.opponent)}<small>${r.home?"主队":"客队"}</small></div><div class="match-score">${r.home?`${reg.gf}-${reg.ga}`:`${reg.ga}-${reg.gf}`}<small>${r.penalties||"终场"}</small></div><div class="match-side">${esc(r.home?r.opponent:S.clubName)}<small>${r.home?"客队":"主队"}</small></div></div><div class="match-block"><h3>赛前判断 · ${esc(pre.label)}</h3><div class="match-brief">${esc(pre.brief)}</div><div class="factor-strip"><span class="factor-chip ${edgeTone(pre.ourRating-pre.oppRating,1.5)}">综合 ${pre.ourRating} : ${pre.oppRating}</span><span class="factor-chip ${edgeTone(pre.styleDelta,.4)}">战术 ${signed(pre.styleDelta)}</span><span class="factor-chip ${edgeTone(pre.homeDelta+pre.pitchDelta,.4)}">场地 ${signed(pre.homeDelta+pre.pitchDelta)}</span><span class="factor-chip">预期 ${pre.myXg}-${pre.oppXg}</span></div></div><div class="match-block"><h3>文字实况</h3><div class="live-list">${r.timeline.map(e=>`<div class="live-event ${e.kind}"><b>${e.minute}′</b><span>${esc(e.text)}</span></div>`).join("")}</div></div><div class="match-block"><h3>为什么是这个结果</h3><div class="match-summary">${esc(r.explanation.summary)}</div><div class="cause-grid" style="margin-top:6px">${r.explanation.causes.map(c=>`<div class="cause ${c.tone}"><b>${esc(c.label)} · ${esc(c.value)}</b><span>${esc(c.detail)}</span></div>`).join("")}</div><ul class="owner-chain">${r.explanation.ownerChain.map(x=>`<li>${esc(x)}</li>`).join("")}</ul></div>`;const box=$("#modalOptions");box.innerHTML=`<button class="primary">${index<total?"进入下一场":"查看月度账单"}<small>${index<total?"下一场也会保留赛前判断和完整复盘":"比赛结果已写入赛程与球员数据"}</small></button>`;box.firstChild.onclick=()=>{$("#mask").classList.remove("show");flushQueue()};$("#mask").classList.add("show")}
 function showMonthReport(fin,reports){const all=reports.filter(Boolean);$("#modalTitle").textContent=`第${S.season}赛季${S.seasonMonth}月 · 月报`;const body=$("#modalBody");body.innerHTML=`<div class="report-line"><span>比赛日与赞助收入</span><span class="up">+${fin.income}万</span></div><div class="report-line"><span>工资、维护、青训与利息</span><span class="down">-${fin.expense}万</span></div><div class="report-line"><span><b>当月现金净额</b></span><span class="${fin.net>=0?"up":"down"}"><b>${fin.net>=0?"+":""}${fin.net}万</b></span></div>${all.map(r=>`<div class="report-line"><span>${esc(r.competition)} ${r.home?"主":"客"} vs ${esc(r.opponent)}</span><span class="${r.gf>r.ga?"up":r.gf<r.ga?"down":"gold"}"><b>${r.gf}-${r.ga}${r.penalties?` ${r.penalties}`:""}</b></span></div><div class="copy">赛前：${esc(r.preview.label)}，预期${r.preview.myXg}-${r.preview.oppXg}；实际进球：${r.scorers.length?r.scorers.map(esc).join("、"):"无"}；最佳${esc(r.motm)}。${r.injury?` ${esc(r.injury)}。`:""}${esc(r.verdict)}</div>`).join("")}`;const box=$("#modalOptions");box.innerHTML="<button>继续俱乐部日程</button>";box.firstChild.onclick=()=>{$("#mask").classList.remove("show");flushQueue()};$("#mask").classList.add("show")}
 function seasonReview(){ensureLivingWorld(S);const table=sortedTable(S),rank=leagueRank(S),mine=table.find(c=>c.id==="me"),champion=table[0],relegated=table.slice(-2),boardOk=rank<=S.targets.boardRank&&S.cup.stage>=S.targets.boardCup,fanOk=rank<=S.targets.fanRank&&S.seasonWins>=S.targets.fanWins;S.board=clamp(S.board+(boardOk?10:-13));S.fans=clamp(S.fans+(fanOk?7:-8));if(rank===1){S.track.leagueTitles++;S.track.trophies++;S.cash+=1200;S.reputation=clamp(S.reputation+10);if(!S.clubHistory.honours.some(x=>x.season===S.season&&x.title==="顶级联赛冠军"))S.clubHistory.honours.push({season:S.season,title:"顶级联赛冠军",detail:`22轮积${mine.points}分`});addMilestone(S,"捧起顶级联赛冠军奖杯",`${S.clubName}以${mine.points}分结束赛季。`,"gold")}if(S.cup.winner){if(!S.clubHistory.honours.some(x=>x.season===S.season&&x.title==="足协杯冠军"))S.clubHistory.honours.push({season:S.season,title:"足协杯冠军",detail:"四轮淘汰赛最终夺冠"});addMilestone(S,"足协杯夺冠",`${S.clubName}把杯赛奖杯带回主场。`,"gold")}Object.values(S.sponsors).filter(Boolean).forEach(sp=>{if(!seasonSponsorSuccess(S,sp)){S.cash-=sp.penalty;gameLog(S,"bad",`${sp.name}的赛季要求未完成，赔付${sp.penalty}万。`)}else S.reputation=clamp(S.reputation+2)});table.forEach((c,i)=>{enrichWorldClub(c,i);if(c.world){c.world.lastSeasonRank=i+1;c.world.history.push({season:S.season,rank:i+1,points:c.points,w:c.w,d:c.d,l:c.l,gf:c.gf,ga:c.ga})}});const seasonMatches=S.matchHistory.filter(m=>m.season===S.season),scorers={};seasonMatches.forEach(m=>(m.scorers||[]).forEach(n=>scorers[n]=(scorers[n]||0)+1));const top=Object.entries(scorers).sort((a,b)=>b[1]-a[1])[0],cupText=S.cup.winner?"冠军":S.cup.stage===0?"首轮出局":`止步第${S.cup.stage+1}阶段`,record={season:S.season,rank,w:S.seasonWins,d:S.seasonDraws,l:S.seasonLosses,points:mine.points,gf:mine.gf,ga:mine.ga,cup:S.cup.winner?"冠军":S.cup.stage,cupText,champion:champion.name,topScorer:top?`${top[0]}（${top[1]}球）`:"无人进球",boardOk,fanOk,cash:Math.round(S.cash)};S.history.push(record);S.clubHistory.seasons.push({...record,cup:cupText});S.world.seasons.push({season:S.season,champion:champion.name,championPoints:champion.points,relegated:relegated.map(c=>c.name),table:table.map((c,i)=>({id:c.id,name:c.name,rank:i+1,points:c.points,gf:c.gf,ga:c.ga}))});S.world.lastRelegated=relegated.filter(c=>c.id!=="me").map(c=>({id:c.id,name:c.name}));addLeagueNews(S,"table",`${champion.name}成为第${S.season}赛季联赛冠军`,`${champion.points}分夺冠；${relegated.map(c=>c.name).join("、")}降级。`,champion.id);addMilestone(S,`第${S.season}赛季结束`, `联赛第${rank}名，杯赛${cupText}，赛季末现金${Math.round(S.cash)}万。`,rank===1?"gold":"");syncClubPlayers(S);return record}
@@ -785,7 +1173,7 @@ function renderPrematchCard(){const d=S._pmDraft;if(!d)return;
  showModal(title,`重要度：${imp}。更衣室气氛：${roomState(S).label}（评分${signed(roomEdge(S))}）。${derby?`同城德比，仇恨${Math.round(S.rival.grudge)}——赢球球迷+5，输球球迷-5。`:""}${S.globalMonth<=2?"你定基调、决定要不要花资源加码；教练据此自动排兵。":""}`,[...toneBtns,...ampBtns,confirmBtn])}
 function confirmPlan(){const d=S._pmDraft;if(!d)return;const plan={tone:d.tone,bonus:d.bonus,youthPush:d.youthPush,presser:d.presser};if(d.bonus){S.cash-=winBonusCost(S);gameLog(S,"month",`为${d.fx.opp?d.fx.opp.name:"杯赛"}一战发出赢球奖。`)}if(d.youthPush)S.coach.authority=clamp(S.coach.authority-15);if(d.presser==="力挺"){S.fans=clamp(S.fans+2);S.roster.forEach(p=>p.morale=clamp(p.morale+2))}if(d.presser==="叫板"){S.fans=clamp(S.fans+3);S.rival.grudge=clamp(S.rival.grudge+6,0,100);S.roster.forEach(p=>p.morale=clamp(p.morale+3));gameLog(S,"","赛前发布会上，你直接点了对方的名字。")}if(d.fx.kind==="cup")S.cup.pendingPlan=plan;else d.fx.fixture.plan=plan;S._pmDraft=null}
 function doEndMonth(){const fixtures=myFixturesThisMonth(S),planTasks=fixtures.map(fx=>()=>openPrematch(fx,()=>flushQueue()));planTasks.push(()=>runMonthResolution());queueAll(planTasks)}
-function runMonthResolution(){const _fdRounds=roundsThisMonth(S),_fdIdx=S.seasonMonth>=MONTHS_PER_SEASON&&_fdRounds.length?_fdRounds[_fdRounds.length-1].index:null,_fdPre=_fdIdx!=null?sortedTable(S).map((c,i)=>({id:c.id,name:c.name,points:c.points,gd:c.gf-c.ga,rank:i+1})):null;const competitionEvents=processMarketCompetition(S),currentRoundIndexes=roundsThisMonth(S).map(x=>x.index+1),fin=settleFinance(S),leagueReports=simulateLeagueMonth(S);leagueReports.forEach((r,i)=>S.matchHistory.push({...r,season:S.season,round:currentRoundIndexes[i]}));const cup=simulateCup(S);if(cup)S.matchHistory.push({...cup,season:S.season,round:null});roomMonthly(S);rivalPulse(S);const reports=[...leagueReports,...(cup?[cup]:[])],all=reports.filter(Boolean);all.forEach(r=>recordClubMatch(S,r));const promiseEvents=evaluatePlayerPromises(S),_fd=buildFinalDay(S,_fdIdx,_fdPre),tasks=all.map((r,i)=>()=>showMatchCentre(r,i+1,all.length));if(_fd)tasks.unshift(()=>showFinalDay(_fd));tasks.push(()=>showMonthReport(fin,reports));if(promiseEvents.length)tasks.push(()=>showModal("合同承诺复核",promiseEvents.join("\n"),[{text:"记录处理结果"}]));if([2,6].includes(S.seasonMonth))tasks.push(()=>showTransferDeadlineReport(competitionEvents));const disaster=disasterCheck();if(disaster){tasks.push(()=>showEnd(disaster[0],disaster[1],false));queueAll(tasks);return}const warning=riskWarning();if(warning){const w=RISK_WARNINGS[warning];S.warningMonth[warning]=S.globalMonth;S.warnings[warning]++;tasks.push(()=>showModal(`${RISK_NAMES[warning]}预警 · ${w.title}`,w.body,[eventOption(w.fix,`花${w.cost}万，风险-${Math.abs(w.delta)}`,()=>{S.cash-=w.cost;risk(S,warning,w.delta);gameLog(S,"good",`${RISK_NAMES[warning]}专项整改完成。`)},S.cash<w.cost),eventOption("暂时压住","风险继续上升",()=>{risk(S,warning,w.ignore);gameLog(S,"bad",`${RISK_NAMES[warning]}预警被搁置。`)})]))}const beat=arcBeatCheck(S);if(beat){gameLog(S,"month",`${beat.arcName}：${beat.title}`);tasks.push(()=>showModal(beat.title,`【${beat.arcName} · 第${S.arcs[beat.arc].act}/4幕】\n\n${beat.body}`,beat.options))}else if(!warning){const e=chooseEvent();if(e)tasks.push(()=>showModal(`俱乐部事件 · ${e.title}`,typeof e.body==="function"?e.body():e.body,e.opts()))}if(S.seasonMonth>=MONTHS_PER_SEASON){const review=seasonReview();if(review.rank>=11){tasks.push(()=>showEnd("降级与解雇",`${S.clubName}以联赛第${review.rank}名降级。董事会没有接受“下一年打回来”的方案，你的三年计划提前结束。`,false))}else if(S.board<=5){tasks.push(()=>showEnd("董事会解雇","赛季复盘没有进入预算环节。董事会先投票终止了你的职务。",false))}else tasks.push(()=>showSeasonReview(review))}else tasks.push(()=>advanceMonth());queueAll(tasks)}
+function runMonthResolution(){const _fdRounds=roundsThisMonth(S),_fdIdx=S.seasonMonth>=MONTHS_PER_SEASON&&_fdRounds.length?_fdRounds[_fdRounds.length-1].index:null,_fdPre=_fdIdx!=null?sortedTable(S).map((c,i)=>({id:c.id,name:c.name,points:c.points,gd:c.gf-c.ga,rank:i+1})):null;const competitionEvents=processMarketCompetition(S),currentRoundIndexes=roundsThisMonth(S).map(x=>x.index+1),fin=settleFinance(S),leagueReports=simulateLeagueMonth(S);leagueReports.forEach((r,i)=>S.matchHistory.push({...r,season:S.season,round:currentRoundIndexes[i]}));const cup=simulateCup(S);if(cup)S.matchHistory.push({...cup,season:S.season,round:null});roomMonthly(S);rivalPulse(S);const reports=[...leagueReports,...(cup?[cup]:[])],all=reports.filter(Boolean);all.forEach(r=>recordClubMatch(S,r));const promiseEvents=evaluatePlayerPromises(S),_fd=buildFinalDay(S,_fdIdx,_fdPre),tasks=all.map((r,i)=>()=>showMatchCentre(r,i+1,all.length));if(_fd)tasks.unshift(()=>showFinalDay(_fd));tasks.push(()=>showMonthReport(fin,reports));if(promiseEvents.length)tasks.push(()=>showModal("合同承诺复核",promiseEvents.join("\n"),[{text:"记录处理结果"}]));if([2,6].includes(S.seasonMonth)){pickDeadlineBeats(S).forEach(b=>tasks.push(()=>showModal(b.title,b.body,b.options())));tasks.push(()=>showTransferDeadlineReport(competitionEvents))}const disaster=disasterCheck();if(disaster){tasks.push(()=>showEnd(disaster[0],disaster[1],false));queueAll(tasks);return}const warning=riskWarning();if(warning){const w=RISK_WARNINGS[warning];S.warningMonth[warning]=S.globalMonth;S.warnings[warning]++;tasks.push(()=>showModal(`${RISK_NAMES[warning]}预警 · ${w.title}`,w.body,[eventOption(w.fix,`花${w.cost}万，风险-${Math.abs(w.delta)}`,()=>{S.cash-=w.cost;risk(S,warning,w.delta);gameLog(S,"good",`${RISK_NAMES[warning]}专项整改完成。`)},S.cash<w.cost),eventOption("暂时压住","风险继续上升",()=>{risk(S,warning,w.ignore);gameLog(S,"bad",`${RISK_NAMES[warning]}预警被搁置。`)})]))}const beat=arcBeatCheck(S);if(beat){gameLog(S,"month",`${beat.arcName}：${beat.title}`);tasks.push(()=>showModal(beat.title,`【${beat.arcName} · 第${S.arcs[beat.arc].act}/4幕】\n\n${beat.body}`,beat.options))}else if(!warning){const e=chooseEvent();if(e)tasks.push(()=>showModal(`俱乐部事件 · ${e.title}`,typeof e.body==="function"?e.body():e.body,e.opts()))}if(S.seasonMonth>=MONTHS_PER_SEASON){const review=seasonReview();if(review.rank>=11){tasks.push(()=>showEnd("降级与解雇",`${S.clubName}以联赛第${review.rank}名降级。董事会没有接受“下一年打回来”的方案，你的三年计划提前结束。`,false))}else if(S.board<=5){tasks.push(()=>showEnd("董事会解雇","赛季复盘没有进入预算环节。董事会先投票终止了你的职务。",false))}else tasks.push(()=>showSeasonReview(review))}else tasks.push(()=>advanceMonth());queueAll(tasks)}
 function endMonth(){if(S.over)return;if(S.energy>0){showModal("本月还有行动力",`还剩${S.energy}点行动力，确定直接结算比赛和财务？`,[eventOption("直接结算","剩余行动力作废",()=>doEndMonth()),eventOption("回去再看看","",()=>{})]);return}doEndMonth()}
 function requestRestart(){showModal("重新开始",S?`确定放弃${S.clubName}当前的全部进度？`:"确定重新开始？",[eventOption("确认重开","本地存档会被覆盖",()=>restartGame()),eventOption("取消","",()=>{})])}
 function restartGame(){try{localStorage.removeItem(SAVE_KEY)}catch(e){}S=null;modalQueue=[];$("#ending").classList.remove("show");$("#mask").classList.remove("show");$("#creator").classList.add("show");renderCreator()}
@@ -795,11 +1183,11 @@ function lockZoom(){if(typeof document==="undefined")return;
  ["gesturestart","gesturechange","gestureend"].forEach(t=>document.addEventListener(t,stop,{passive:false}));
  document.addEventListener("touchmove",e=>{if(e.touches&&e.touches.length>1)e.preventDefault()},{passive:false});
  document.addEventListener("dblclick",stop,{passive:false})}
-function init(){lockZoom();renderCreator();if(load()){$("#creator").classList.remove("show");renderAll();if(S.over&&S.endData)setTimeout(()=>showEnd(S.endData.title,S.endData.story,S.endData.good),0)}else $("#gameGuide").classList.add("show");$("#endMonthBtn").onclick=endMonth;$("#resetBtn").onclick=requestRestart;document.querySelectorAll("#tabs button").forEach(b=>b.onclick=()=>switchTab(b.dataset.tab));document.addEventListener("click",()=>document.querySelectorAll(".stat.tip-on").forEach(x=>x.classList.remove("tip-on")))}
+function init(){lockZoom();loadNameList();renderCreator();if(load()){$("#creator").classList.remove("show");renderAll();if(S.over&&S.endData)setTimeout(()=>showEnd(S.endData.title,S.endData.story,S.endData.good),0)}else $("#gameGuide").classList.add("show");$("#endMonthBtn").onclick=endMonth;$("#resetBtn").onclick=requestRestart;document.querySelectorAll("#tabs button").forEach(b=>b.onclick=()=>switchTab(b.dataset.tab));document.addEventListener("click",()=>document.querySelectorAll(".stat.tip-on").forEach(x=>x.classList.remove("tip-on")))}
 
 const API={initialState,makeMarket,createSchedule,teamRating,selectLineup,projectedFinance,nextFixtures,matchPreview,simulateMyMatch,simulateLeagueMonth,simulateCup,buildMatchNarrative,ensureLivingWorld,ensureTransferState,squadDiagnosis,estimateTransferImpact,offerPackages,playerNegotiation,processMarketCompetition,evaluatePlayerPromises,processWorldMonth,prepareNextSeasonClubs,computeClubHistory,recordClubMatch,seasonReview,finalEnding,getEventCount:()=>EVENTS.length,getState:()=>S,setState:s=>S=ensureLivingWorld(s),getSponsorSlotCount:()=>Object.keys(SPONSOR_SLOTS).length,getFacilityCount:()=>Object.keys(FACILITIES).length};
 if(typeof window!=="undefined")window.FootballOwnerGame=API;else globalThis.FootballOwnerGame=API;
-Object.assign(globalThis,{ACTIONS,chooseArchetype,startGame,showClubCreator,switchTab,setSquadFilter,setMarketFilter,setRelationFilter,toggleTip,scoutPlayer,toggleShortlist,openBid,toggleList,acceptSale,rejectSale,renewPlayer,releasePlayer,promoteYouth,releaseYouth,upgradeAcademy,hireCoach,fireCoach,signSponsor,upgradeFacility,repayDebt,borrowMoney,npcMenu,interactNpc,restartGame});
+Object.assign(globalThis,{ACTIONS,chooseArchetype,startGame,showClubCreator,switchTab,setSquadFilter,setMarketFilter,setRelationFilter,toggleTip,scoutPlayer,toggleShortlist,openBid,toggleList,acceptSale,rejectSale,renewPlayer,releasePlayer,promoteYouth,releaseYouth,upgradeAcademy,hireCoach,fireCoach,signSponsor,upgradeFacility,repayDebt,borrowMoney,npcMenu,interactNpc,restartGame,applyNameList,clearNameList,renderDealCard,submitDeal,doWalkAway,shopAround,renderBidBoard,confirmBid});
 if(typeof document!=="undefined")init();
 </script>
 </body>

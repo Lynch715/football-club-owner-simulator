@@ -28,7 +28,7 @@ const wanted=new Map();
 const drain=(pickIdx)=>{let g=0;
   while(mask.classList.contains("show")&&g++<600){
     const t=$("#modalTitle").textContent;
-    if(!wanted.has(t)&&/赛前会议|比赛中心|月报|最后一轮|老队长|十七岁|秦百川|那篇没发出去|赛季复盘|俱乐部事件|预警|合同承诺|转会截止/.test(t)){
+    if(!wanted.has(t)&&/赛前会议|比赛中心|月报|最后一轮|老队长|十七岁|秦百川|那篇没发出去|赛季复盘|俱乐部事件|预警|合同承诺|转会截止|谈判中|报价|标个价|截止日|签约完成|名单/.test(t)){
       wanted.set(t,1);snapModal(t);}
     const bs=opts.children.filter(b=>!b.disabled);
     const arr=bs.length?bs:opts.children;
@@ -38,6 +38,27 @@ const drain=(pickIdx)=>{let g=0;
 sb.chooseArchetype("fallen");
 $("#ownerInput").value="欧阳明诚";  // 档位默认即真实队名，城市/队名留空走默认
 sb.startGame();drain();
+
+// 先在转会窗里跑一遍新的谈判与兜售，把弹窗抓下来
+{
+  const S0=sb.FootballOwnerGame.getState();
+  const target=S0.market.slice().sort((a,b)=>b.potential-a.potential)[0];
+  if(target){sb.openBid(target.id);snapModal("向卖方报价");
+    if(mask.classList.contains("show")&&opts.children[1])opts.children[1].onclick();  // 按要价开
+    snapModal("谈判中（第一轮）");
+    // 切一次付款方式与附加条款，再看一眼
+    if(opts.children[1])opts.children[1].onclick();
+    if(opts.children[2])opts.children[2].onclick();
+    snapModal("谈判中（带条款）");
+    drain();}
+  const S1=sb.FootballOwnerGame.getState();
+  const mine=S1.roster.slice().sort((a,b)=>b.ability-a.ability)[3];
+  if(mine){sb.toggleList(mine.id);snapModal("给球员标个价");
+    if(opts.children[1])opts.children[1].onclick();      // 市场价
+    sb.shopAround(mine.id);snapModal("收到的报价");
+    drain();}
+  sb.switchTab("business");shots.push({name:"tab:business（含自定义名单）",kind:"panel",panel:$("#panel").innerHTML});
+}
 
 // 玩到第 10 个月：拿到赛前会议、剧情、终局直播
 for(let m=0;m<10;m++){
