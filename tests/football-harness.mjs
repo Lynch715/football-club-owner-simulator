@@ -9,7 +9,7 @@ const root = path.resolve(here, "..");
 // 载入游戏唯一 <script> 到无 DOM 沙箱。init() 被 typeof document 守卫,不会自动运行。
 export function loadGame() {
   // 仓库里游戏以 index.html 发布,本地开发文件名为 足球俱乐部老板.html —— 两者都支持
-  const candidates = ["index.html", "足球俱乐部老板.html"];
+  const candidates = ["足球俱乐部老板.html", "index.html"];
   const file = candidates.map(f => path.join(root, f)).find(p => fs.existsSync(p));
   if (!file) throw new Error("未找到游戏 HTML(index.html / 足球俱乐部老板.html)");
   const html = fs.readFileSync(file, "utf8");

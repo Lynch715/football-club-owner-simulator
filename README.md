@@ -12,15 +12,38 @@
 
 **三年蓝图**:主界面常驻三赛季目标看板;开局摊牌五条结局路线——联赛王朝 / 奖杯陈列室 / 青训之城 / 经营模范 / 稳定强队,自己挑一条冲。杯赛对手按阶段升级实力,好结局需要真正的联赛成绩,不再靠白捡杯冠。
 
+**更衣室有人**:每名球员带性格(更衣室领袖 / 火药桶 / 玻璃心 / 本地孩子…),队长按威望自动推举。气氛值直接进入预期进球,并在赛后因果网格里单独占一格。卖谁、罚谁、推谁上位都会引发连锁反应——卖掉队长会掉全队士气、袖标空缺,火药桶去采访区甩话,本地孩子提起小时候看他踢球。
+
+**同城有个宿敌**:北港海星,老板秦百川。德比里看台氛围被放大成 ±1.6 评分——想赢德比,平时就得养球迷;赛前会议多一个「叫板」,赢输都翻倍。仇恨够高时他会在转会窗对你最贵的球员报价、抢你盯上的目标、在采访里补一句。
+
+**四条人物故事弧**:老队长、青训妖人、秦百川、跑口记者程雨薇,各一条跨三赛季的四幕主线。第一幕怎么对队长,第三幕他会不会自己选择留下;压过稿的人,第三幕会被查到佣金。第四幕按累计选择给不同收尾,写进队史,三年结算页有一栏「三年的回响」。
+
+**赛季末决战直播**:最后一轮先讲清形势,再一场一场播报关键对手的比分,最后才是你自己的比赛和定格名次,每条一次点击。争冠日 / 保级日 / 收官日三种剧本。
+
 ## 开发
 
-游戏是单文件,全部逻辑在 `index.html` 的 `<script>` 内。逻辑测试**零依赖**,用 Node 内置 `vm` 把脚本载入无 DOM 沙箱、以种子 RNG 断言:
+游戏是单文件,全部逻辑在 `index.html` 的 `<script>` 内。测试**零依赖**,用 Node 内置 `vm` 把脚本载入沙箱、以种子 RNG 断言:
 
 ```bash
-node tests/football-baseline.test.mjs
-node tests/football-prematch.test.mjs
-node tests/football-cup-endings.test.mjs
-node tests/football-robot.mjs
+node tests/football-baseline.test.mjs      # 引擎可加载 + 比赛有方差
+node tests/football-prematch.test.mjs      # 赛前基调 / 加码 / 因果格
+node tests/football-cup-endings.test.mjs   # 杯赛按实力 + 结局门槛 + 目标看板
+node tests/football-drama.test.mjs         # 更衣室 / 德比 / 剧情引擎 / 终局直播
+node tests/football-robot.mjs              # 放置流存活基线
+node tests/football-drama-robot.mjs        # 三档开局各三局,全流程无崩溃/NaN/越界
+node tests/football-dom-smoke.mjs          # 喂假 DOM 跑真 UI:三十个月、全部弹窗与十一个页签
 ```
+
+### UI / 美术审计
+
+`tests/ui-audit/` 会用假 DOM 真跑一局,抓下每个界面的真实 HTML,再同时按桌面 1000px 和手机 390px 渲染成一张自检页:
+
+```bash
+node tests/ui-audit/capture-screens.mjs
+node tests/ui-audit/build-audit.mjs
+open ui-audit.html
+```
+
+页面顶部自动汇总,正文里红框标出内容溢出、黄框标出被截断或被挤压的元素。检测项包括横向溢出、文字截断、弹窗超高、确认键够不到、按钮区需要滚动、窄列文字堆叠、卡片被压成细长条。
 
 设计方案与实施计划见 `docs/superpowers/`。
